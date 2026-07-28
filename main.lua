@@ -6,7 +6,7 @@ task.spawn(function()
     local vim = game:GetService("VirtualInputManager")
 
     while getgenv().Farm do
-        task.wait(0.05) -- Частая и стабильная обнова (без задержек для ходьбы)
+        task.wait(0.05)
         pcall(function()
             local char = p.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -37,28 +37,35 @@ task.spawn(function()
                 end
             end
 
-            -- 3. Действие при наличии моба
+            -- 3. Движение и Атака
             if target and target:FindFirstChild("HumanoidRootPart") then
                 local mPos = target.HumanoidRootPart.Position
                 local hrpPos = hrp.Position
 
-                -- Поворот тела персонажа к мобу
+                -- Разворачиваем персонажа в сторону моба
                 hrp.CFrame = CFrame.lookAt(hrpPos, Vector3.new(mPos.X, hrpPos.Y, mPos.Z))
 
-                -- ПЛАВНАЯ КАМЕРА (Lerp)
+                -- ПЛАВНАЯ КАМЕРА
                 local targetFocus = mPos + Vector3.new(0, 2.5, 0)
                 cam.CFrame = cam.CFrame:Lerp(CFrame.new(cam.CFrame.Position, targetFocus), 0.08)
 
-                -- ДВИЖЕНИЕ К МОБУ
-                hum:MoveTo(mPos)
+                -- 🔥 ЖЕСТКОЕ ДВИЖЕНИЕ ВПЕРЕД (работает на 100%)
+                if minDist > 4 then
+                    -- Направляем персонажа идти прямо к мобу
+                    local moveDirection = (mPos - hrpPos).Unit
+                    hum:Move(moveDirection, false)
+                else
+                    -- Подмешиваем остановку, когда подошли вплотную
+                    hum:Move(Vector3.new(0,0,0), false)
+                end
 
-                -- Проверка препятствий (обход стеночек)
+                -- Прыжок при стене
                 local wall = workspace:Raycast(hrpPos, hrp.CFrame.LookVector * 4)
                 if wall then
                     hum.Jump = true
                 end
 
-                -- АТАКА (если подошли достаточно близко)
+                -- АТАКА
                 if minDist <= 8 then
                     vim:SendMouseButtonEvent(0, 0, 0, true, game, 1)
                     vim:SendMouseButtonEvent(0, 0, 0, false, game, 1)
