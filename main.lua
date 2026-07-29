@@ -14,22 +14,23 @@ local lastFruitSpin = 0
 local lastDashTime = 0
 local lastZTime = 0
 local lastXTime = 0
-local lastCTime = 0  -- Для способности C (ракета)
+local lastCTime = 0
 local isRecoveringHP = false
 local hasRocketFruit = false
 local lastHrpPos = Vector3.new(0, 0, 0)
 local stuckTimer = 0
+local currentWeapon = "Sword" -- "Sword" или "Rocket"
 
 -- НАСТРОЙКИ ФРУКТА РАКЕТА
 local ROCKET_CONFIG = {
-    UseZ = true,      -- Использовать Z (ракетный залп)
-    UseX = true,      -- Использовать X (огненный шар)
-    UseC = true,      -- Использовать C (взрывная волна)
+    UseZ = true,
+    UseX = true,
+    UseC = true,
     CooldownZ = 2.0,
     CooldownX = 4.0,
     CooldownC = 6.0,
-    MinDist = 5,      -- Минимальная дистанция для использования
-    MaxDist = 30,     -- Максимальная дистанция
+    MinDist = 5,
+    MaxDist = 30,
 }
 
 -- ТОЧКИ СПАВНА МОБОВ
@@ -52,21 +53,42 @@ local QuestList = {
     {Min = 55, Max = 59, Name = "BuggyQuest1", Level = 3, Mob = "Bobby"},
 }
 
--- ФУНКЦИЯ ПРОВЕРКИ НАЛИЧИЯ ФРУКТА РАКЕТА
+-- ==================== ФУНКЦИИ РАБОТЫ С ОРУЖИЕМ ====================
+
+-- Проверка наличия фрукта Ракета
 local function checkRocketFruit()
-    local char = p.Character
-    if not char then return false end
-    
-    -- Проверяем в руках
-    for _, tool in pairs(char:GetChildren()) do
+    for _, tool in pairs(p.Backpack:GetChildren()) do
         if tool:IsA("Tool") and tool.Name:find("Rocket") then
             return true
         end
     end
+    return false
+end
+
+-- ПОЛУЧИТЬ ТЕКУЩЕЕ ОРУЖИЕ В РУКАХ
+local function getCurrentTool(char)
+    if not char then return nil end
+    return char:FindFirstChildOfClass("Tool")
+end
+
+-- ЭКИПИРОВАТЬ МЕЧ
+local function equipSword(hum)
+    if not hum then return end
     
-    -- Проверяем в рюкзаке
+    local char = hum.Parent
+    if not char then return end
+    
+    -- Проверяем, есть ли уже меч в руках
+    local current = getCurrentTool(char)
+    if current and not current.Name:find("Fruit") then
+        return true -- уже меч
+    end
+    
+    -- Ищем меч в рюкзаке
     for _, tool in pairs(p.Backpack:GetChildren()) do
-        if tool:IsA("Tool") and tool.Name:find("Rocket") then
+        if tool:IsA("Tool") and not tool.Name:find("Fruit") then
+            hum:EquipTool(tool)
+            currentWeapon = "Sword"
             return true
         end
     end
@@ -74,107 +96,32 @@ local function checkRocketFruit()
     return false
 end
 
--- ЭКИПИРОВКА ФРУКТА (для использования способностей)
-local function equipRocketFruit(hum)
-    if not hum then return end
-    
-    -- Проверяем, есть ли фрукт в руках
-    local char = hum.Parent
-    if char then
-        for _, tool in pairs(char:GetChildren()) do
-            if tool:IsA("Tool") and tool.Name:find("Rocket") then
-                return tool -- уже в руках
-            end
-        end
-    end
-    
-    -- Ищем в рюкзаке
-    for _, tool in pairs(p.Backpack:GetChildren()) do
-        if tool:IsA("Tool") and tool.Name:find("Rocket") then
-            hum:EquipTool(tool)
-            return tool
-        end
-    end
-    
-    return nil
-end
-
--- ЭКИПИРОВКА МЕЧА/КАТАНЫ
-local function equipSword(hum)
+-- ЭКИПИРОВАТЬ РАКЕТУ
+local function equipRocket(hum)
     if not hum then return end
     
     local char = hum.Parent
     if not char then return end
     
-    -- Проверяем, есть ли меч в руках
-    local current = char:FindFirstChildOfClass("Tool")
-    if current and not current.Name:find("Fruit") then
-        return current
+    -- Проверяем, есть ли уже ракета в руках
+    local current = getCurrentTool(char)
+    if current and current.Name:find("Rocket") then
+        return true
     end
     
-    -- Ищем меч в рюкзаке
+    -- Ищем ракету в рюкзаке
     for _, tool in pairs(p.Backpack:GetChildren()) do
-        if tool:IsA("Tool") and not tool.Name:find("Fruit") then
+        if tool:IsA("Tool") and tool.Name:find("Rocket") then
             hum:EquipTool(tool)
-            return tool
+            currentWeapon = "Rocket"
+            return true
         end
     end
     
-    return nil
+    return false
 end
 
--- ФУНКЦИЯ ИСПОЛЬЗОВАНИЯ ФРУКТА РАКЕТА
-local function useRocketAbilities(targetPos, hrpPos, hum)
-    if not hum or not targetPos then return end
-    
-    local distance = (hrpPos - targetPos).Magnitude
-    local now = tick()
-    
-    -- Используем способности только на определённой дистанции
-    if distance < ROCKET_CONFIG.MinDist or distance > ROCKET_CONFIG.MaxDist then
-        return
-    end
-    
-    -- Временно экипируем фрукт
-    local rocketTool = equipRocketFruit(hum)
-    if not rocketTool then 
-        hasRocketFruit = false
-        return 
-    end
-    
-    hasRocketFruit = true
-    
-    -- Используем способности по очереди
-    if ROCKET_CONFIG.UseZ and now - lastZTime >= ROCKET_CONFIG.CooldownZ then
-        lastZTime = now
-        pcall(function()
-            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Z, false, game)
-            task.wait(0.05)
-            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Z, false, game)
-        end)
-        return
-    end
-    
-    if ROCKET_CONFIG.UseX and now - lastXTime >= ROCKET_CONFIG.CooldownX then
-        lastXTime = now
-        pcall(function()
-            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.X, false, game)
-            task.wait(0.05)
-            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.X, false, game)
-        end)
-        return
-    end
-    
-    if ROCKET_CONFIG.UseC and now - lastCTime >= ROCKET_CONFIG.CooldownC then
-        lastCTime = now
-        pcall(function()
-            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.C, false, game)
-            task.wait(0.05)
-            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.C, false, game)
-        end)
-        return
-    end
-end
+-- ==================== ОСТАЛЬНЫЕ ФУНКЦИИ ====================
 
 -- НАДЕЖНОЕ НАЖАТИЕ КЛАВИШ
 local function pressKey(keyCode, charCode)
@@ -204,7 +151,7 @@ local function doubleJump()
     end)
 end
 
--- АВТО-ПРОКАЧКА СТАТОВ (Меч + Защита)
+-- АВТО-ПРОКАЧКА СТАТОВ
 local function autoAddStats()
     pcall(function()
         local points = p.Data.Points.Value
@@ -302,12 +249,63 @@ local function getCurrentQuestData()
     return QuestList[1]
 end
 
+-- ==================== ИСПОЛЬЗОВАНИЕ СПОСОБНОСТЕЙ РАКЕТЫ ====================
+
+local function useRocketAbilities(hum)
+    if not hum then return end
+    
+    local char = hum.Parent
+    if not char then return end
+    
+    local current = getCurrentTool(char)
+    if not current or not current.Name:find("Rocket") then
+        return -- ракета не в руках
+    end
+    
+    local now = tick()
+    
+    -- Используем способности по очереди (только если ракета в руках)
+    if ROCKET_CONFIG.UseZ and now - lastZTime >= ROCKET_CONFIG.CooldownZ then
+        lastZTime = now
+        pcall(function()
+            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Z, false, game)
+            task.wait(0.05)
+            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Z, false, game)
+        end)
+        return true
+    end
+    
+    if ROCKET_CONFIG.UseX and now - lastXTime >= ROCKET_CONFIG.CooldownX then
+        lastXTime = now
+        pcall(function()
+            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.X, false, game)
+            task.wait(0.05)
+            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.X, false, game)
+        end)
+        return true
+    end
+    
+    if ROCKET_CONFIG.UseC and now - lastCTime >= ROCKET_CONFIG.CooldownC then
+        lastCTime = now
+        pcall(function()
+            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.C, false, game)
+            task.wait(0.05)
+            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.C, false, game)
+        end)
+        return true
+    end
+    
+    return false
+end
+
+-- ==================== ФОНОВЫЕ ЗАДАЧИ ====================
+
 -- Фоновый поток для фруктов и статов
 task.spawn(function()
     while getgenv().Farm do
         autoStoreAllFruits()
         autoAddStats()
-        hasRocketFruit = checkRocketFruit() -- Обновляем статус фрукта
+        hasRocketFruit = checkRocketFruit()
         
         local currentTime = os.time()
         if currentTime - lastFruitSpin >= 7200 or lastFruitSpin == 0 then
@@ -341,10 +339,12 @@ getgenv().FarmConnection = RunService.RenderStepped:Connect(function()
     end
 end)
 
--- ОСНОВНОЙ ЦИКЛ ФАРМА
+-- ==================== ОСНОВНОЙ ЦИКЛ ====================
+
 task.spawn(function()
-    local lastSwordEquip = 0
     local lastRocketCheck = 0
+    local lastWeaponSwitch = 0
+    local rocketCooldown = 0
     
     while getgenv().Farm do
         task.wait(0.04)
@@ -360,8 +360,8 @@ task.spawn(function()
 
             hum.AutoRotate = true
             
-            -- Проверяем наличие фрукта раз в 5 секунд
-            if tick() - lastRocketCheck > 5 then
+            -- Проверяем наличие фрукта раз в 3 секунды
+            if tick() - lastRocketCheck > 3 then
                 hasRocketFruit = checkRocketFruit()
                 lastRocketCheck = tick()
             end
@@ -392,7 +392,6 @@ task.spawn(function()
                 else
                     hum:MoveTo(hrp.Position)
                 end
-
                 return
             end
 
@@ -408,82 +407,80 @@ task.spawn(function()
 
             if not currentTarget and Waypoints[activeMob] then
                 hum:MoveTo(Waypoints[activeMob])
+                return
             end
 
-            -- Движение и атака с использованием фрукта
-            if currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
-                local mHrp = currentTarget.HumanoidRootPart
-                local mHum = currentTarget:FindFirstChild("Humanoid")
-                local dist = (hrp.Position - mHrp.Position).Magnitude
-                local now = tick()
+            if not currentTarget then return end
 
-                -- Если есть фрукт и дистанция подходящая - используем способности фрукта
-                if hasRocketFruit and dist >= ROCKET_CONFIG.MinDist and dist <= ROCKET_CONFIG.MaxDist then
-                    -- Экипируем фрукт и используем способности
-                    useRocketAbilities(mHrp.Position, hrp.Position, hum)
-                    
-                    -- Двигаемся к цели
-                    if dist > 5 then
-                        hum:MoveTo(mHrp.Position)
-                    else
-                        hum:MoveTo(hrp.Position)
+            local mHrp = currentTarget:FindFirstChild("HumanoidRootPart")
+            local mHum = currentTarget:FindFirstChild("Humanoid")
+            if not mHrp or not mHum or mHum.Health <= 0 then return end
+            
+            local dist = (hrp.Position - mHrp.Position).Magnitude
+            local now = tick()
+
+            -- ========== ЛОГИКА ВЫБОРА ОРУЖИЯ ==========
+            
+            -- Если дистанция подходит для фрукта (5-30) И есть ракета
+            if hasRocketFruit and dist >= ROCKET_CONFIG.MinDist and dist <= ROCKET_CONFIG.MaxDist then
+                -- Переключаемся на ракету, если ещё не переключились
+                if currentWeapon ~= "Rocket" then
+                    equipRocket(hum)
+                end
+                
+                -- Используем способности ракеты (только если ракета в руках)
+                local usedAbility = useRocketAbilities(hum)
+                
+                -- Двигаемся к цели
+                hum:MoveTo(mHrp.Position)
+                
+                -- Если способность не использована, атакуем мечом (ближний бой)
+                if not usedAbility and dist <= 8 then
+                    -- Переключаемся на меч
+                    if currentWeapon ~= "Sword" then
+                        equipSword(hum)
                     end
+                    -- Атака мечом
+                    VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+                    VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+                end
+                
+            else
+                -- Если дистанция не подходит или нет ракеты - используем меч
+                if currentWeapon ~= "Sword" then
+                    equipSword(hum)
+                end
+                
+                -- Движение
+                if dist > 5 then
+                    hum:MoveTo(mHrp.Position)
                     
-                    -- Проверка на застревание
                     local movedDist = (hrp.Position - lastHrpPos).Magnitude
                     if movedDist < 0.4 then
                         stuckTimer = stuckTimer + 0.04
                         if stuckTimer >= 0.25 then
                             doubleJump()
-                            stuckTimer = 0
                         end
                     else
                         stuckTimer = 0
                     end
                     lastHrpPos = hrp.Position
-                    
-                    -- Атака мечом если близко
-                    if dist <= 10 and mHum and mHum.Health > 0 then
-                        -- Переключаемся на меч для ближней атаки
-                        equipSword(hum)
+                else
+                    stuckTimer = 0
+                    lastHrpPos = hrp.Position
+                end
+
+                -- Атака мечом (только если меч в руках)
+                if dist <= 10 and mHum and mHum.Health > 0 then
+                    if now - lastZTime >= 4.0 then
+                        lastZTime = now
+                        pressKey(Enum.KeyCode.Z, 0x5A)
+                    elseif now - lastXTime >= 6.0 then
+                        lastXTime = now
+                        pressKey(Enum.KeyCode.X, 0x58)
+                    else
                         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
                         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
-                    end
-                    
-                else
-                    -- Если фрукта нет или дистанция не подходит - используем меч
-                    equipSword(hum)
-                    
-                    if dist > 5 then
-                        hum:MoveTo(mHrp.Position)
-
-                        local movedDist = (hrp.Position - lastHrpPos).Magnitude
-                        if movedDist < 0.4 then
-                            stuckTimer = stuckTimer + 0.04
-                            if stuckTimer >= 0.25 then
-                                doubleJump()
-                            end
-                        else
-                            stuckTimer = 0
-                        end
-                        lastHrpPos = hrp.Position
-                    else
-                        stuckTimer = 0
-                        lastHrpPos = hrp.Position
-                    end
-
-                    -- Атака мечом
-                    if dist <= 10 and mHum and mHum.Health > 0 then
-                        if now - lastZTime >= 4.0 then
-                            lastZTime = now
-                            pressKey(Enum.KeyCode.Z, 0x5A)
-                        elseif now - lastXTime >= 6.0 then
-                            lastXTime = now
-                            pressKey(Enum.KeyCode.X, 0x58)
-                        else
-                            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
-                            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
-                        end
                     end
                 end
             end
@@ -497,9 +494,11 @@ task.spawn(function()
             rayParams.FilterType = Enum.RaycastFilterType.Exclude
             local wall = workspace:Raycast(hrp.Position, hrp.CFrame.LookVector * 4, rayParams)
             if wall then doubleJump() end
+            
         end)
     end
 end)
 
 print("✅ Фарм с использованием FRUIT ROCKET запущен!")
 print("📌 Настройки в ROCKET_CONFIG в начале скрипта")
+print("📌 Переключается на ракету только на дистанции 5-30 студий")
