@@ -9,57 +9,28 @@ local cam = workspace.CurrentCamera
 
 local currentTarget = nil
 
--- Отключаем прошлую связку при перезапуске
+-- Отключаем прошлую связку с RenderStepped при перезапуске
 if getgenv().FarmConnection then
     getgenv().FarmConnection:Disconnect()
     getgenv().FarmConnection = nil
 end
 
--- Функция быстрого поиска ближайшего живого моба
-local function getClosestEnemy(hrp)
-    local enemiesFolder = workspace:FindFirstChild("Enemies")
-    if not enemiesFolder then return nil, math.huge end
-
-    local target, minDist = nil, math.huge
-    for _, m in pairs(enemiesFolder:GetChildren()) do
-        local mHum = m:FindFirstChild("Humanoid")
-        local mHrp = m:FindFirstChild("HumanoidRootPart")
-        
-        -- Проверяем, что моб жив и его здоровье > 0
-        if mHum and mHrp and mHum.Health > 0 then
-            local dist = (hrp.Position - mHrp.Position).Magnitude
-            if dist < minDist then
-                minDist = dist
-                target = m
-            end
-        end
-    end
-    return target, minDist
-end
-
--- 1. ПЛАВНАЯ КАМЕРА (60+ FPS)
+-- 1. ПЛАВНАЯ КАМЕРА (60+ FPS) — следит за мобом и не ломает физику ходьбы
 if getgenv().Farm then
     getgenv().FarmConnection = RunService.RenderStepped:Connect(function()
         if not getgenv().Farm then return end
         
         if currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
-            local mHum = currentTarget:FindFirstChild("Humanoid")
-            -- Если моб умер прямо во время кадра — сбрасываем камеру
-            if not mHum or mHum.Health <= 0 then
-                currentTarget = nil
-                return
-            end
-
             local mPos = currentTarget.HumanoidRootPart.Position
             local targetFocus = mPos + Vector3.new(0, 2.5, 0)
             cam.CFrame = cam.CFrame:Lerp(CFrame.lookAt(cam.CFrame.Position, targetFocus), 0.15)
         end
     end)
 
-    -- 2. ОСНОВНОЙ ЦИКЛ ФАРМА
+    -- 2. ОСНОВНАЯ ЛОГИКА (Поиск, ходьба, атака)
     task.spawn(function()
         while getgenv().Farm do
-            task.wait(0.02) -- Минимальная задержка для максимальной отзывчивости
+            task.wait(0.05)
             pcall(function()
                 local char = p.Character
                 local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -69,6 +40,7 @@ if getgenv().Farm then
                     return 
                 end
 
+                -- Включаем стандартный поворот физики Roblox
                 hum.AutoRotate = true
 
                 -- Экипировка оружия
@@ -81,45 +53,49 @@ if getgenv().Farm then
                     end
                 end
 
-                -- Проверяем текущую цель: если она умерла или отсутствует — ищем новую МГНОВЕННО
-                local targetHrp = currentTarget and currentTarget:FindFirstChild("HumanoidRootPart")
-                local targetHum = currentTarget and currentTarget:FindFirstChild("Humanoid")
-
-                if not currentTarget or not targetHrp or not targetHum or targetHum.Health <= 0 then
-                    currentTarget, _ = getClosestEnemy(hrp)
+                -- Поиск ближайшего моба
+                local target, minDist = nil, math.huge
+                local enemiesFolder = workspace:FindFirstChild("Enemies")
+                
+                if enemiesFolder then
+                    for _, m in pairs(enemiesFolder:GetChildren()) do
+                        local mHum = m:FindFirstChild("Humanoid")
+                        local mHrp = m:FindFirstChild("HumanoidRootPart")
+                        if mHum and mHrp and mHum.Health > 0 then
+                            local dist = (hrp.Position - mHrp.Position).Magnitude
+                            if dist < minDist then
+                                minDist = dist
+                                target = m
+                            end
+                        end
+                    end
                 end
+                
+                currentTarget = target
 
-                -- Логика движения и атаки к найденной цели
+                -- Движение и атака
                 if currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
-                    local mHrp = currentTarget.HumanoidRootPart
-                    local mHum = currentTarget:FindFirstChild("Humanoid")
+                    local mPos = currentTarget.HumanoidRootPart.Position
 
-                    -- Если цель жива
-                    if mHum and mHum.Health > 0 then
-                        local dist = (hrp.Position - mHrp.Position).Magnitude
+                    -- Бег к мобу
+                    if minDist > 3 then
+                        hum:MoveTo(mPos)
+                    end
 
-                        -- Мгновенное возобновление бега
-                        if dist > 3 then
-                            hum:MoveTo(mHrp.Position)
-                        end
+                    -- Прыжок при препятствии (исключая самого игрока из луча)
+                    local rayParams = RaycastParams.new()
+                    rayParams.FilterDescendantsInstances = {char}
+                    rayParams.FilterType = Enum.RaycastFilterType.Exclude
 
-                        -- Преодоление препятствий
-                        local rayParams = RaycastParams.new()
-                        rayParams.FilterDescendantsInstances = {char}
-                        rayParams.FilterType = Enum.RaycastFilterType.Exclude
+                    local wall = workspace:Raycast(hrp.Position, hrp.CFrame.LookVector * 4, rayParams)
+                    if wall then
+                        hum.Jump = true
+                    end
 
-                        local wall = workspace:Raycast(hrp.Position, hrp.CFrame.LookVector * 4, rayParams)
-                        if wall then
-                            hum.Jump = true
-                        end
-
-                        -- Атака (строго только пока у моба есть ХП)
-                        if dist <= 8 then
-                            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
-                            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
-                        end
-                    else
-                        currentTarget = nil
+                    -- Удар
+                    if minDist <= 8 then
+                        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+                        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
                     end
                 end
             end)
