@@ -15,7 +15,6 @@ local lastDashTime = 0
 local lastZTime = 0
 local lastXTime = 0
 
--- Переменные для отслеживания застревания
 local lastHrpPos = Vector3.new(0, 0, 0)
 local stuckTimer = 0
 
@@ -194,13 +193,13 @@ task.spawn(function()
                 if dist > 5 then
                     hum:MoveTo(mHrp.Position)
 
-                    -- 🔥 ПРОВЕРКА НА ЗАТРЕВАНИЕ: Если не может приблизиться — спамит ПРОБЕЛ
+                    -- ПРОВЕРКА НА ЗАТРЕВАНИЕ: Если не может приблизиться — спамит ПРОБЕЛ
                     local movedDist = (hrp.Position - lastHrpPos).Magnitude
                     if movedDist < 0.4 then
                         stuckTimer = stuckTimer + 0.04
-                        if stuckTimer >= 0.25 then -- Застрял дольше чем на 0.25 сек
+                        if stuckTimer >= 0.25 then
                             hum.Jump = true
-                            pressKey(Enum.KeyCode.Space, 0x20) -- Спам пробела
+                            pressKey(Enum.KeyCode.Space, 0x20)
                         end
                     else
                         stuckTimer = 0
@@ -213,8 +212,8 @@ task.spawn(function()
 
                 local now = tick()
 
-                -- 1. Рывок на Q (при приближении 10-35 студов)
-                if dist > 10 and dist < 100
+                -- 1. Рывок на Q (при приближении от 10 до 35 студов)
+                if dist > 10 and dist < 35 then
                     if now - lastDashTime >= 0.8 then
                         lastDashTime = now
                         pressKey(Enum.KeyCode.Q, 0x51)
