@@ -1,5 +1,5 @@
 getgenv().Farm = true
-getgenv().WeaponType = "Hybrid" -- Гибридный режим (Sword + Fruit Skills)
+getgenv().WeaponType = "Hybrid" -- "Hybrid" (Меч + Скиллы фрукта) или "Sword" (Только Меч)
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -13,9 +13,9 @@ local CommF = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_")
 local currentTarget = nil
 local lastFruitSpin = 0
 local lastDashTime = 0
-local lastZTime = 0
-local lastXTime = 0
-local lastCTime = 0
+local lastZTime = tick()
+local lastXTime = tick()
+local lastCTime = tick()
 local isRecoveringHP = false
 
 local lastHrpPos = Vector3.new(0, 0, 0)
@@ -80,25 +80,36 @@ local function doubleJump()
     end)
 end
 
--- 🔥 ФУНКЦИЯ БЫСТРОЙ СМЕНЫ ОРУЖИЯ (Sword / Fruit)
-local function equipSpecificTool(char, hum, toolCategory)
+-- 🔥 ТОЧНОЕ ОПРЕДЕЛЕНИЕ ТИПА ПРЕДМЕТА
+local function isFruitTool(tool)
+    if not tool or not tool:IsA("Tool") then return false end
+    local tt = tool:FindFirstChild("ToolTip")
+    if tt and tt.Value == "Blox Fruit" then return true end
+    local name = tool.Name:lower()
+    return name:find("rocket") or name:find("fruit") or name:find("-")
+end
+
+local function isSwordTool(tool)
+    if not tool or not tool:IsA("Tool") then return false end
+    local tt = tool:FindFirstChild("ToolTip")
+    if tt and tt.Value == "Sword" then return true end
+    return not isFruitTool(tool)
+end
+
+-- НАДЕЖНАЯ ЭКИПИРОВКА ОРУЖИЯ
+local function equipSpecificTool(char, hum, category)
     local current = char:FindFirstChildOfClass("Tool")
     if current then
-        local toolType = current:FindFirstChild("ToolTip") and current.ToolTip.Value or ""
-        if toolCategory == "Fruit" and (toolType == "Blox Fruit" or current.Name:find("Rocket") or current.Name:find("Fruit")) then
-            return true
-        elseif toolCategory == "Sword" and (toolType == "Sword" or not current.Name:find("Fruit")) then
-            return true
-        end
+        if category == "Fruit" and isFruitTool(current) then return true end
+        if category == "Sword" and isSwordTool(current) then return true end
     end
 
     for _, t in pairs(p.Backpack:GetChildren()) do
         if t:IsA("Tool") then
-            local tType = t:FindFirstChild("ToolTip") and t.ToolTip.Value or ""
-            if toolCategory == "Fruit" and (tType == "Blox Fruit" or t.Name:find("Rocket") or t.Name:find("Fruit")) then
+            if category == "Fruit" and isFruitTool(t) then
                 hum:EquipTool(t)
                 return true
-            elseif toolCategory == "Sword" and (tType == "Sword" or not t.Name:find("Fruit")) then
+            elseif category == "Sword" and isSwordTool(t) then
                 hum:EquipTool(t)
                 return true
             end
@@ -107,7 +118,7 @@ local function equipSpecificTool(char, hum, toolCategory)
     return false
 end
 
--- АВТО-ПРОКАЧКА СТАТОВ (Гибридная распределение)
+-- АВТО-ПРОКАЧКА СТАТОВ
 local function autoAddStats()
     pcall(function()
         local points = p.Data.Points.Value
@@ -348,31 +359,36 @@ task.spawn(function()
                     end
                 end
 
-                -- 🔥 2. ГИБРИДНАЯ АТАКА (Меч M1 + Быстрое переключение на Фрукт для Z, X, C)
+                -- 🔥 2. ГИБРИДНАЯ АТАКА (Катана M1 + Короткий свич на Ракету для Z, X, C)
                 if dist <= 10 and mHum and mHum.Health > 0 then
-                    if now - lastZTime >= 3.5 then
-                        equipSpecificTool(char, hum, "Fruit")
-                        task.wait(0.05)
-                        pressKey(Enum.KeyCode.Z, 0x5A)
-                        lastZTime = now
-                        task.wait(0.1)
-                        equipSpecificTool(char, hum, "Sword")
-                    elseif now - lastXTime >= 5.5 then
-                        equipSpecificTool(char, hum, "Fruit")
-                        task.wait(0.05)
-                        pressKey(Enum.KeyCode.X, 0x58)
-                        lastXTime = now
-                        task.wait(0.1)
-                        equipSpecificTool(char, hum, "Sword")
-                    elseif now - lastCTime >= 7.0 then
-                        equipSpecificTool(char, hum, "Fruit")
-                        task.wait(0.05)
-                        pressKey(Enum.KeyCode.C, 0x43)
-                        lastCTime = now
-                        task.wait(0.1)
-                        equipSpecificTool(char, hum, "Sword")
+                    if getgenv().WeaponType == "Hybrid" then
+                        if now - lastZTime >= 4.0 then
+                            equipSpecificTool(char, hum, "Fruit")
+                            task.wait(0.05)
+                            pressKey(Enum.KeyCode.Z, 0x5A)
+                            lastZTime = now
+                            task.wait(0.08)
+                            equipSpecificTool(char, hum, "Sword")
+                        elseif now - lastXTime >= 6.0 then
+                            equipSpecificTool(char, hum, "Fruit")
+                            task.wait(0.05)
+                            pressKey(Enum.KeyCode.X, 0x58)
+                            lastXTime = now
+                            task.wait(0.08)
+                            equipSpecificTool(char, hum, "Sword")
+                        elseif now - lastCTime >= 8.0 then
+                            equipSpecificTool(char, hum, "Fruit")
+                            task.wait(0.05)
+                            pressKey(Enum.KeyCode.C, 0x43)
+                            lastCTime = now
+                            task.wait(0.08)
+                            equipSpecificTool(char, hum, "Sword")
+                        else
+                            equipSpecificTool(char, hum, "Sword")
+                            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+                            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+                        end
                     else
-                        -- Основной непрерывный урон мечом
                         equipSpecificTool(char, hum, "Sword")
                         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
                         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
