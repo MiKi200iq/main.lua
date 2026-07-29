@@ -6,14 +6,14 @@ task.spawn(function()
     local vim = game:GetService("VirtualInputManager")
 
     while getgenv().Farm do
-        task.wait(0.05)
+        task.wait(0.1) -- Увеличен интервал, чтобы физика ходьбы успевала срабатывать
         pcall(function()
             local char = p.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
             local hum = char and char:FindFirstChild("Humanoid")
             if not hrp or not hum or hum.Health <= 0 then return end
 
-            -- 1. Экипировка оружия/кулаков
+            -- 1. Экипировка оружия
             if not char:FindFirstChildOfClass("Tool") then
                 for _, t in pairs(p.Backpack:GetChildren()) do
                     if t:IsA("Tool") then
@@ -37,29 +37,21 @@ task.spawn(function()
                 end
             end
 
-            -- 3. Движение и Атака
+            -- 3. Движение, Камера и Атака
             if target and target:FindFirstChild("HumanoidRootPart") then
                 local mPos = target.HumanoidRootPart.Position
                 local hrpPos = hrp.Position
 
-                -- Разворачиваем персонажа в сторону моба
-                hrp.CFrame = CFrame.lookAt(hrpPos, Vector3.new(mPos.X, hrpPos.Y, mPos.Z))
-
-                -- ПЛАВНАЯ КАМЕРА
+                -- ПЛАВНАЯ КАМЕРА (следит за врагом)
                 local targetFocus = mPos + Vector3.new(0, 2.5, 0)
                 cam.CFrame = cam.CFrame:Lerp(CFrame.new(cam.CFrame.Position, targetFocus), 0.08)
 
-                -- 🔥 ЖЕСТКОЕ ДВИЖЕНИЕ ВПЕРЕД (работает на 100%)
-                if minDist > 4 then
-                    -- Направляем персонажа идти прямо к мобу
-                    local moveDirection = (mPos - hrpPos).Unit
-                    hum:Move(moveDirection, false)
-                else
-                    -- Подмешиваем остановку, когда подошли вплотную
-                    hum:Move(Vector3.new(0,0,0), false)
+                -- 🔥 ЧИСТАЯ ХОДЬБА (Без жесткого поворота CFrame, который блокировал бег)
+                if minDist > 3 then
+                    hum:MoveTo(mPos) -- Персонаж сам повернется и побежит к цели
                 end
 
-                -- Прыжок при стене
+                -- Прыжок если уперся в стеночку
                 local wall = workspace:Raycast(hrpPos, hrp.CFrame.LookVector * 4)
                 if wall then
                     hum.Jump = true
