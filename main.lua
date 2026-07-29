@@ -4,9 +4,10 @@ task.spawn(function()
     local p = game.Players.LocalPlayer
     local cam = workspace.CurrentCamera
     local vim = game:GetService("VirtualInputManager")
+    local PathfindingService = game:GetService("PathfindingService")
 
     while getgenv().Farm do
-        task.wait(0.1) -- Увеличен интервал, чтобы физика ходьбы успевала срабатывать
+        task.wait(0.1)
         pcall(function()
             local char = p.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -23,7 +24,7 @@ task.spawn(function()
                 end
             end
 
-            -- 2. Поиск ближайшего живого моба
+            -- 2. Поиск ближайшего моба
             local target, minDist = nil, math.huge
             for _, m in pairs(workspace.Enemies:GetChildren()) do
                 local mHum = m:FindFirstChild("Humanoid")
@@ -37,24 +38,45 @@ task.spawn(function()
                 end
             end
 
-            -- 3. Движение, Камера и Атака
+            -- 3. Навигация и Атака
             if target and target:FindFirstChild("HumanoidRootPart") then
                 local mPos = target.HumanoidRootPart.Position
                 local hrpPos = hrp.Position
 
-                -- ПЛАВНАЯ КАМЕРА (следит за врагом)
+                -- ПЛАВНАЯ КАМЕРА
                 local targetFocus = mPos + Vector3.new(0, 2.5, 0)
                 cam.CFrame = cam.CFrame:Lerp(CFrame.new(cam.CFrame.Position, targetFocus), 0.08)
 
-                -- 🔥 ЧИСТАЯ ХОДЬБА (Без жесткого поворота CFrame, который блокировал бег)
-                if minDist > 3 then
-                    hum:MoveTo(mPos) -- Персонаж сам повернется и побежит к цели
-                end
+                -- 🔥 УМНЫЙ ОБХОД СТЕН (PathfindingService)
+                if minDist > 4 then
+                    -- Создаем путь с учетом размера персонажа
+                    local path = PathfindingService:CreatePath({
+                        AgentRadius = 2,
+                        AgentHeight = 5,
+                        AgentCanJump = true
+                    })
+                    
+                    path:ComputeAsync(hrpPos, mPos)
 
-                -- Прыжок если уперся в стеночку
-                local wall = workspace:Raycast(hrpPos, hrp.CFrame.LookVector * 4)
-                if wall then
-                    hum.Jump = true
+                    if path.Status == Enum.PathStatus.Success then
+                        local waypoints = path:GetWaypoints()
+                        -- Берем следующую точку пути для движения (waypoint[2])
+                        if #waypoints >= 2 then
+                            local nextWaypoint = waypoints[2]
+                            
+                            -- Если точка требует прыжка (высокая стена/уступ)
+                            if nextWaypoint.Action == Enum.PathWaypointAction.Jump then
+                                hum.Jump = true
+                            end
+                            
+                            hum:MoveTo(nextWaypoint.Position)
+                        else
+                            hum:MoveTo(mPos)
+                        end
+                    else
+                        -- Если прямой путь свободен или поиск сбоит — бежим прямо
+                        hum:MoveTo(mPos)
+                    end
                 end
 
                 -- АТАКА
