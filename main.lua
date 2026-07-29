@@ -19,15 +19,18 @@ local isRecoveringHP = false
 local lastHrpPos = Vector3.new(0, 0, 0)
 local stuckTimer = 0
 
--- Координаты точек спавна мобов в Джунглях
+-- Координаты точек спавна мобов (Включая арену Короля Горилл)
 local Waypoints = {
     ["Monkey"] = Vector3.new(-1600, 36, 150),
     ["Gorilla"] = Vector3.new(-1240, 6, -490),
+    ["Gorilla King"] = Vector3.new(-1130, 15, -490),
 }
 
+-- Квесты Джунглей: 10-14 (Обезьяны), 15-19 (Гориллы), 20+ (Король Горилл)
 local JungleQuests = {
     {Min = 10, Max = 14, Name = "JungleQuest", Level = 1, Mob = "Monkey"},
-    {Min = 15, Max = 99, Name = "JungleQuest", Level = 2, Mob = "Gorilla"},
+    {Min = 15, Max = 19, Name = "JungleQuest", Level = 2, Mob = "Gorilla"},
+    {Min = 20, Max = 99, Name = "JungleQuest", Level = 3, Mob = "Gorilla King"},
 }
 
 if getgenv().FarmConnection then
@@ -46,7 +49,7 @@ local function pressKey(keyCode, charCode)
     end)
 end
 
--- 🔥 ФУНКЦИЯ ДВОЙНОГО ПРЫЖКА
+-- ФУНКЦИЯ ДВОЙНОГО ПРЫЖКА
 local function doubleJump()
     task.spawn(function()
         pcall(function()
@@ -56,7 +59,7 @@ local function doubleJump()
                 hum.Jump = true
                 pressKey(Enum.KeyCode.Space, 0x20)
                 
-                task.wait(0.15) -- Задержка перед вторым прыжком в воздухе
+                task.wait(0.15)
                 
                 hum.Jump = true
                 pressKey(Enum.KeyCode.Space, 0x20)
@@ -104,21 +107,27 @@ local function takeQuest(questName, questLevel)
     end)
 end
 
--- Поиск обычных мобов (без Босса)
+-- УМНЫЙ ПОИСК ЦЕЛИ (Поддерживает обычных мобов и Босса)
 local function getEnemy(mobName, hrp)
     local enemiesFolder = workspace:FindFirstChild("Enemies")
     if not enemiesFolder then return nil end
 
     local target, minDist = nil, math.huge
     for _, m in pairs(enemiesFolder:GetChildren()) do
-        if m.Name:find(mobName) and not m.Name:find("King") then
-            local mHum = m:FindFirstChild("Humanoid")
-            local mHrp = m:FindFirstChild("HumanoidRootPart")
-            if mHum and mHrp and mHum.Health > 0 then
-                local dist = (hrp.Position - mHrp.Position).Magnitude
-                if dist < minDist then
-                    minDist = dist
-                    target = m
+        if m.Name:find(mobName) then
+            local isKing = m.Name:find("King")
+            -- Если фармим обычных горилл — пропускаем Короля. Если квест на Короля — берем именно его!
+            if mobName == "Gorilla" and isKing then
+                -- пропускаем
+            else
+                local mHum = m:FindFirstChild("Humanoid")
+                local mHrp = m:FindFirstChild("HumanoidRootPart")
+                if mHum and mHrp and mHum.Health > 0 then
+                    local dist = (hrp.Position - mHrp.Position).Magnitude
+                    if dist < minDist then
+                        minDist = dist
+                        target = m
+                    end
                 end
             end
         end
@@ -169,7 +178,7 @@ getgenv().FarmConnection = RunService.RenderStepped:Connect(function()
     end
 end)
 
--- ОСНОВНОЙ ЦИКЛ (Фарм + Скиллы + Q-Рывок + Убегание + Двойной прыжок)
+-- ОСНОВНОЙ ЦИКЛ БОЯ
 task.spawn(function()
     while getgenv().Farm do
         task.wait(0.04)
@@ -185,7 +194,7 @@ task.spawn(function()
 
             hum.AutoRotate = true
 
-            -- УБЕГАНИЕ ПРИ НИЗКОМ ЗДОРОВЬЕ
+            -- УБЕГАНИЕ ПРИ НИЗКОМ ЗДОРОВЬЕ (< 35%)
             if hum.Health < hum.MaxHealth * 0.35 then
                 isRecoveringHP = true
             elseif hum.Health >= hum.MaxHealth * 0.85 then
@@ -200,7 +209,7 @@ task.spawn(function()
                 if enemy and enemy:FindFirstChild("HumanoidRootPart") then
                     local eHrp = enemy.HumanoidRootPart
                     local fleeDir = (hrp.Position - eHrp.Position).Unit
-                    local fleePos = hrp.Position + Vector3.new(fleeDir.X * 40, 0, fleeDir.Z * 40)
+                    local fleePos = hrp.Position + Vector3.new(fleeDir.X * 45, 0, fleeDir.Z * 45)
                     
                     hum:MoveTo(fleePos)
 
@@ -235,11 +244,12 @@ task.spawn(function()
                 end
             end
 
-            -- Квест и цель
+            -- Квест и поиск цели
             local qData = getJungleQuestData()
             takeQuest(qData.Name, qData.Level)
             currentTarget = getEnemy(qData.Mob, hrp)
 
+            -- Если босс еще не заспавнился — бежим на спавн арену и ждем
             if not currentTarget and Waypoints[qData.Mob] then
                 hum:MoveTo(Waypoints[qData.Mob])
             end
@@ -253,12 +263,12 @@ task.spawn(function()
                 if dist > 5 then
                     hum:MoveTo(mHrp.Position)
 
-                    -- 🔥 ПРОВЕРКА НА ЗАТРЕВАНИЕ С ДВОЙНЫМ ПРЫЖКОМ
+                    -- ДВОЙНОЙ ПРЫЖОК ПРИ ЗАТРЕВАНИИ
                     local movedDist = (hrp.Position - lastHrpPos).Magnitude
                     if movedDist < 0.4 then
                         stuckTimer = stuckTimer + 0.04
                         if stuckTimer >= 0.25 then
-                            doubleJump() -- Делает двойной прыжок!
+                            doubleJump()
                         end
                     else
                         stuckTimer = 0
