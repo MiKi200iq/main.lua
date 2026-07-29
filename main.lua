@@ -205,9 +205,9 @@ task.spawn(function()
             hum.AutoRotate = true
 
             -- УБЕГАНИЕ ПРИ НИЗКОМ ЗДОРОВЬЕ (< 35%)
-            if hum.Health < hum.MaxHealth * 0.35 then
+            if hum.Health < hum.MaxHealth * 0.10 then
                 isRecoveringHP = true
-            elseif hum.Health >= hum.MaxHealth * 0.85 then
+            elseif hum.Health >= hum.MaxHealth * 0.50 then
                 isRecoveringHP = false
             end
 
