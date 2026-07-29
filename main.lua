@@ -15,32 +15,22 @@ if getgenv().FarmConnection then
     getgenv().FarmConnection = nil
 end
 
--- 1. ПЛАВНЫЙ И РЕЗКИЙ ПОВОРОТ (Срабатывает каждый кадр / 60+ FPS)
+-- 1. ПЛАВНАЯ КАМЕРА (60+ FPS) — следит за мобом и не ломает физику ходьбы
 if getgenv().Farm then
     getgenv().FarmConnection = RunService.RenderStepped:Connect(function()
         if not getgenv().Farm then return end
         
-        local char = p.Character
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        if not hrp or not currentTarget or not currentTarget:FindFirstChild("HumanoidRootPart") then return end
-        
-        local mPos = currentTarget.HumanoidRootPart.Position
-        local hrpPos = hrp.Position
-
-        -- Поворот персонажа к мобу (по оси Y, без наклонов тела)
-        local targetLookAt = Vector3.new(mPos.X, hrpPos.Y, mPos.Z)
-        -- Коэффициент 0.25 дает быструю, но сглаженную реакцию
-        hrp.CFrame = hrp.CFrame:Lerp(CFrame.lookAt(hrpPos, targetLookAt), 0.25)
-
-        -- Плавное слежение камеры за мобом
-        local targetFocus = mPos + Vector3.new(0, 2.5, 0)
-        cam.CFrame = cam.CFrame:Lerp(CFrame.lookAt(cam.CFrame.Position, targetFocus), 0.25)
+        if currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
+            local mPos = currentTarget.HumanoidRootPart.Position
+            local targetFocus = mPos + Vector3.new(0, 2.5, 0)
+            cam.CFrame = cam.CFrame:Lerp(CFrame.lookAt(cam.CFrame.Position, targetFocus), 0.15)
+        end
     end)
 
     -- 2. ОСНОВНАЯ ЛОГИКА (Поиск, ходьба, атака)
     task.spawn(function()
         while getgenv().Farm do
-            task.wait(0.05) -- Уменьшен интервал для более отзывчивой работы
+            task.wait(0.05)
             pcall(function()
                 local char = p.Character
                 local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -49,6 +39,9 @@ if getgenv().Farm then
                     currentTarget = nil
                     return 
                 end
+
+                -- Включаем стандартный поворот физики Roblox
+                hum.AutoRotate = true
 
                 -- Экипировка оружия
                 if not char:FindFirstChildOfClass("Tool") then
@@ -89,8 +82,12 @@ if getgenv().Farm then
                         hum:MoveTo(mPos)
                     end
 
-                    -- Прыжок при препятствии
-                    local wall = workspace:Raycast(hrp.Position, hrp.CFrame.LookVector * 4)
+                    -- Прыжок при препятствии (исключая самого игрока из луча)
+                    local rayParams = RaycastParams.new()
+                    rayParams.FilterDescendantsInstances = {char}
+                    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+                    local wall = workspace:Raycast(hrp.Position, hrp.CFrame.LookVector * 4, rayParams)
                     if wall then
                         hum.Jump = true
                     end
