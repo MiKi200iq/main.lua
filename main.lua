@@ -107,29 +107,40 @@ local function autoStoreAllFruits()
     end)
 end
 
--- ЭКИПИРОВКА МЕЧА
+-- 🔥 ГАРАНТИРОВАННАЯ ЭКИПИРОВКА МЕЧА
 local function equipSword(char, hum)
     if not char or not hum then return end
+    
     local current = char:FindFirstChildOfClass("Tool")
     if current and not current.Name:find("Fruit") and not current.Name:find("Rocket") then
         return true
     end
+
+    -- Убираем все текущие предметы из рук
+    hum:UnequipTools()
+    task.wait(0.05)
+
+    -- Достаем Меч
     for _, t in pairs(p.Backpack:GetChildren()) do
         if t:IsA("Tool") and not t.Name:find("Fruit") and not t.Name:find("Rocket") then
             hum:EquipTool(t)
-            return true
+            break
         end
     end
-    return false
 end
 
 -- ЭКИПИРОВКА РАКЕТЫ
 local function equipRocket(char, hum)
     if not char or not hum then return end
+    
     local current = char:FindFirstChildOfClass("Tool")
     if current and (current.Name:find("Rocket") or current.Name:find("Fruit")) then
         return true
     end
+
+    hum:UnequipTools()
+    task.wait(0.05)
+
     for _, t in pairs(p.Backpack:GetChildren()) do
         if t:IsA("Tool") and (t.Name:find("Rocket") or t.Name:find("Fruit")) then
             hum:EquipTool(t)
@@ -344,7 +355,7 @@ task.spawn(function()
                     end
                 end
 
-                -- 🔥 ПРОВЕРКА: КАЖДЫЕ 7 СЕКУНД БЕРЕМ РАКЕТУ И ПРОЖИМАЕМ СКИЛЛЫ (Z, X, C)
+                -- 🔥 КАЖДЫЕ 7 СЕКУНД БЕРЕМ РАКЕТУ, ПРОЖИМАЕМ СКИЛЛЫ И ВОЗВРАЩАЕМ МЕЧ
                 if dist <= 30 and not isUsingFruitCombo and (now - lastFruitComboTime >= 7.0) then
                     lastFruitComboTime = now
                     isUsingFruitCombo = true
@@ -357,20 +368,22 @@ task.spawn(function()
 
                             -- 2. Прожимаем скиллы Ракеты
                             pressKey(Enum.KeyCode.Z, 0x5A)
-                            task.wait(0.1)
+                            task.wait(0.25)
                             pressKey(Enum.KeyCode.X, 0x58)
-                            task.wait(0.1)
+                            task.wait(0.25)
                             pressKey(Enum.KeyCode.C, 0x43)
-                            task.wait(0.2)
+                            
+                            -- Ждем завершения анимации скиллов перед сменой оружия!
+                            task.wait(0.6)
 
-                            -- 3. Возвращаем Меч обратно
+                            -- 3. Надежно возвращаем Меч обратно
                             equipSword(char, hum)
                         end)
                         isUsingFruitCombo = false
                     end)
                 end
 
-                -- ОСНОВНОЙ БОЙ МЕЧОМ (Если сейчас не идёт прокаст Ракеты)
+                -- ОСНОВНОЙ БОЙ МЕЧОМ (Если сейчас не идет прокаст Ракеты)
                 if not isUsingFruitCombo and dist <= 10 and mHum and mHum.Health > 0 then
                     equipSword(char, hum)
                     if now - lastZTime >= 4.0 then
