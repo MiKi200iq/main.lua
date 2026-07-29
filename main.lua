@@ -75,7 +75,7 @@ ScreenGui.Parent = parentContainer
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 300, 0, 230)
+MainFrame.Size = UDim2.new(0, 320, 0, 220)
 MainFrame.Position = UDim2.new(0.05, 0, 0.3, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(24, 24, 28)
 MainFrame.BorderSizePixel = 0
@@ -91,20 +91,36 @@ UICorner.Parent = MainFrame
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 38)
 Title.BackgroundColor3 = Color3.fromRGB(34, 34, 40)
-Title.Text = "🛡️ Blox Fruits Auto Farm"
+Title.Text = "  🛡️ Blox Fruits Auto Farm"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.TextSize = 15
+Title.TextSize = 14
 Title.Font = Enum.Font.SourceSansBold
+Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = MainFrame
 
 local TitleCorner = Instance.new("UICorner")
 TitleCorner.CornerRadius = UDim.new(0, 10)
 TitleCorner.Parent = Title
 
+-- Кнопка ЗАКРЫТЬ (❌)
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 26, 0, 26)
+CloseBtn.Position = UDim2.new(1, -32, 0, 6)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+CloseBtn.Text = "❌"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.Font = Enum.Font.SourceSansBold
+CloseBtn.TextSize = 12
+CloseBtn.Parent = Title
+
+local CloseCorner = Instance.new("UICorner")
+CloseCorner.CornerRadius = UDim.new(0, 6)
+CloseCorner.Parent = CloseBtn
+
 -- Кнопка ВКЛ/ВЫКЛ ФАРМ
 local ToggleBtn = Instance.new("TextButton")
-ToggleBtn.Size = UDim2.new(0.9, 0, 0, 38)
-ToggleBtn.Position = UDim2.new(0.05, 0, 0.21, 0)
+ToggleBtn.Size = UDim2.new(0.92, 0, 0, 38)
+ToggleBtn.Position = UDim2.new(0.04, 0, 0.23, 0)
 ToggleBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
 ToggleBtn.Text = "ФАРМ: ВЫКЛ"
 ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -116,24 +132,28 @@ local ToggleCorner = Instance.new("UICorner")
 ToggleCorner.CornerRadius = UDim.new(0, 8)
 ToggleCorner.Parent = ToggleBtn
 
--- Контейнер для кнопок островов
+-- Горизонтальный контейнер для кнопок островов
 local IslandFrame = Instance.new("Frame")
-IslandFrame.Size = UDim2.new(0.9, 0, 0, 40)
-IslandFrame.Position = UDim2.new(0.05, 0, 0.44, 0)
+IslandFrame.Size = UDim2.new(0.92, 0, 0, 36)
+IslandFrame.Position = UDim2.new(0.04, 0, 0.46, 0)
 IslandFrame.BackgroundTransparency = 1
 IslandFrame.Parent = MainFrame
 
-local UIGrid = Instance.new("UIGridLayout")
-UIGrid.CellSize = UDim2.new(0.31, 0, 0, 36)
-UIGrid.CellPadding = UDim2.new(0.035, 0, 0, 0)
-UIGrid.Parent = IslandFrame
+local UIList = Instance.new("UIListLayout")
+UIList.FillDirection = Enum.FillDirection.Horizontal
+UIList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+UIList.SortOrder = Enum.SortOrder.LayoutOrder
+UIList.Padding = UDim.new(0.02, 0)
+UIList.Parent = IslandFrame
 
 -- Кнопки островов
 local IslandButtons = {}
 
-local function createIslandBtn(id, label)
+local function createIslandBtn(id, label, order)
     local btn = Instance.new("TextButton")
     btn.Name = id .. "Btn"
+    btn.Size = UDim2.new(0.31, 0, 1, 0)
+    btn.LayoutOrder = order
     btn.Text = label
     btn.TextColor3 = Color3.fromRGB(255, 255, 255)
     btn.TextSize = 12
@@ -153,14 +173,14 @@ local function createIslandBtn(id, label)
     IslandButtons[id] = btn
 end
 
-createIslandBtn("Starter", "🏝️ Начальный")
-createIslandBtn("Jungle", "🌴 Джунгли")
-createIslandBtn("Pirate", "🏴‍☠️ Пираты")
+createIslandBtn("Starter", "🏝️ Начальный", 1)
+createIslandBtn("Jungle", "🌴 Джунгли", 2)
+createIslandBtn("Pirate", "🏴‍☠️ Пираты", 3)
 
 -- Метка Статуса
 local StatusLabel = Instance.new("TextLabel")
-StatusLabel.Size = UDim2.new(0.9, 0, 0, 30)
-StatusLabel.Position = UDim2.new(0.05, 0, 0.72, 0)
+StatusLabel.Size = UDim2.new(0.92, 0, 0, 30)
+StatusLabel.Position = UDim2.new(0.04, 0, 0.72, 0)
 StatusLabel.BackgroundTransparency = 1
 StatusLabel.Text = "Остров: Начальный | Фарм остановлен"
 StatusLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
@@ -194,6 +214,15 @@ end
 ToggleBtn.MouseButton1Click:Connect(function()
     getgenv().Farm = not getgenv().Farm
     updateUI()
+end)
+
+CloseBtn.MouseButton1Click:Connect(function()
+    getgenv().Farm = false
+    if getgenv().FarmConnection then
+        getgenv().FarmConnection:Disconnect()
+        getgenv().FarmConnection = nil
+    end
+    ScreenGui:Destroy()
 end)
 
 updateUI()
@@ -366,7 +395,7 @@ local function getEnemy(mobName, hrp)
             local dist = (hrp.Position - mHrp.Position).Magnitude
             if m.Name:find(mobName) then
                 if (mobName == "Gorilla" and m.Name:find("King")) or (mobName == "Pirate" and m.Name:find("Brute")) then
-                    -- пропуск боссов/других типов мобов
+                    -- пропуск других видов мобов
                 elseif dist < minDist then
                     minDist = dist
                     target = m
@@ -377,7 +406,7 @@ local function getEnemy(mobName, hrp)
     return target
 end
 
--- Вспомогательный поток (рулетка и статы)
+-- Поток рулетки и статов
 task.spawn(function()
     while true do
         if getgenv().Farm then
@@ -398,7 +427,7 @@ task.spawn(function()
     end
 end)
 
--- Наведение камеры
+-- Камера
 getgenv().FarmConnection = RunService.RenderStepped:Connect(function()
     if not getgenv().Farm then return end
     if currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
@@ -412,7 +441,7 @@ getgenv().FarmConnection = RunService.RenderStepped:Connect(function()
     end
 end)
 
--- Основной цикл фарма
+-- Основной поток фарма
 task.spawn(function()
     while true do
         task.wait(0.05)
@@ -453,7 +482,6 @@ task.spawn(function()
                 local currentQuestData = getTargetQuestData()
                 local activeMob = getActiveQuestMob()
 
-                -- Отмена квестов на боссов, если они погибли
                 if (activeMob == "Gorilla King" and not isMobAlive("Gorilla King")) or (activeMob == "Bobby" and not isMobAlive("Bobby")) then
                     abandonQuest()
                     task.wait(0.3)
