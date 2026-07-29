@@ -1,18 +1,16 @@
---[[
-    БЛОКС ФРУИТС: ФАРМ + РАБОЧИЙ АВТОУДАР + АВТОПРОКАЧКА С GUI
-]]
+-- [[ BLOX FRUITS FARM + AUTO STAT + GUI (DELTA FIX) ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local VirtualInputManager = game:GetService("VirtualInputManager")
+local VirtualInput = game:GetService("VirtualInputManager")
 
 local player = Players.LocalPlayer
 
--- Инициализация состояния
+-- Состояние фарма
 getgenv().Farm = false
 
--- Настройки статов
+-- Настройки статов (по умолчанию Melee + Defense)
 local statConfig = {
     Melee = true,
     Defense = true,
@@ -21,7 +19,7 @@ local statConfig = {
     Fruit = false
 }
 
--- ========== 1. СОЗДАНИЕ GUI ==========
+-- ==================== GUI ====================
 local function createGUI()
     local oldGui = player.PlayerGui:FindFirstChild("FarmGUI")
     if oldGui then oldGui:Destroy() end
@@ -31,7 +29,6 @@ local function createGUI()
     screenGui.ResetOnSpawn = false
     screenGui.Parent = player.PlayerGui
 
-    -- Главное окно
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(0, 250, 0, 310)
     frame.Position = UDim2.new(0, 10, 0, 50)
@@ -57,7 +54,7 @@ local function createGUI()
     title.Font = Enum.Font.GothamBold
     title.Parent = frame
 
-    -- Кнопка закрытия [X]
+    -- Кнопка закрытия
     local closeBtn = Instance.new("TextButton")
     closeBtn.Size = UDim2.new(0, 25, 0, 25)
     closeBtn.Position = UDim2.new(1, -28, 0, 3)
@@ -80,7 +77,7 @@ local function createGUI()
         screenGui:Destroy()
     end)
 
-    -- Кнопка ВКЛ / ВЫКЛ
+    -- Кнопка включения
     local toggleBtn = Instance.new("TextButton")
     toggleBtn.Size = UDim2.new(0.8, 0, 0, 35)
     toggleBtn.Position = UDim2.new(0.1, 0, 0, 40)
@@ -205,6 +202,7 @@ end
 
 local gui = createGUI()
 
+-- Обновление конфига из GUI
 local function updateConfigFromGUI()
     for name, getState in pairs(gui.Checkboxes) do
         statConfig[name] = getState()
@@ -214,7 +212,7 @@ end
 gui.ApplyButton.MouseButton1Click:Connect(updateConfigFromGUI)
 updateConfigFromGUI()
 
--- ========== 2. АВТОПРОКАЧКА СТАТОВ ==========
+-- ==================== АВТОПРОКАЧКА ====================
 local function autoStat()
     if not player:FindFirstChild("Data") then return end
 
@@ -244,18 +242,17 @@ local function autoStat()
         end
         idx = idx + 1
         if idx > #statsToUp then idx = 1 end
-        task.wait(0.05)
+        wait(0.05)
     end
     gui.UpdateInfo()
 end
 
--- ========== 3. УПРАВЛЕНИЕ ВКЛ / ВЫКЛ ==========
+-- ==================== УПРАВЛЕНИЕ ВКЛ/ВЫКЛ ====================
 gui.ToggleButton.MouseButton1Click:Connect(function()
     getgenv().Farm = not getgenv().Farm
     
     local char = player.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
-    local hrp = char and char:FindFirstChild("HumanoidRootPart")
 
     if getgenv().Farm then
         gui.ToggleButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
@@ -268,57 +265,72 @@ gui.ToggleButton.MouseButton1Click:Connect(function()
         gui.StatusLabel.Text = "Status: OFF"
         gui.StatusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 
-        if hum and hrp then
-            hum:MoveTo(hrp.Position)
-            hum.AutoRotate = true
+        if hum and char then
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                hum:MoveTo(hrp.Position)
+                hum.AutoRotate = true
+            end
         end
     end
 end)
 
--- ========== 4. РАБОЧАЯ ФУНКЦИЯ АТАКИ ==========
+-- ==================== ФУНКЦИЯ АТАКИ (без VirtualInput, через tool) ====================
 local function attack()
     local char = player.Character
     if not char then return end
     
     local tool = char:FindFirstChildOfClass("Tool")
     if tool then
-        tool:Activate()
+        tool:Activate()  -- основной метод для Blox Fruits
     end
 
-    -- Виртуальный клик мыши (обходит блокировки Blox Fruits)
-    VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
-    task.wait(0.01)
-    VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+    -- Дополнительно пробуем клик (на случай, если Activate не сработает)
+    pcall(function()
+        VirtualInput:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+        wait(0.01)
+        VirtualInput:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+    end)
 end
 
--- ========== 5. ОСНОВНОЙ ЦИКЛ ==========
-task.spawn(function()
+-- ==================== ОСНОВНОЙ ЦИКЛ (без continue) ====================
+spawn(function()
     local cam = workspace.CurrentCamera
     local camSpeed = 0.08
     local lastAttackTime = 0
-    attackCooldown = 0.2
-    
+    local attackCooldown = 0.2
     local lastLevel = 0
+
     if player:FindFirstChild("Data") and player.Data:FindFirstChild("Level") then
         lastLevel = player.Data.Level.Value
     end
 
     while true do
-        task.wait(0.05)
+        wait(0.05)
         
+        -- Если фарм выключен, пропускаем итерацию
+        if not getgenv().Farm then
+            -- Можно добавить небольшую задержку, чтобы не грузить процессор
+            wait(0.1)
+            continue  -- <-- ЭТО ОШИБКА! В Lua нет continue.
+        end
+
+        -- Исправлено: убираем continue, используем if-end
         if getgenv().Farm then
             pcall(function()
                 local char = player.Character
                 local hrp = char and char:FindFirstChild("HumanoidRootPart")
                 local hum = char and char:FindFirstChildOfClass("Humanoid")
-                
                 if not hrp or not hum or hum.Health <= 0 then return end
 
                 -- Экипировка оружия
-                if not char:FindFirstChildOfClass("Tool") then 
-                    for _, t in pairs(player.Backpack:GetChildren()) do 
-                        if t:IsA("Tool") then hum:EquipTool(t) break end 
-                    end 
+                if not char:FindFirstChildOfClass("Tool") then
+                    for _, t in pairs(player.Backpack:GetChildren()) do
+                        if t:IsA("Tool") then
+                            hum:EquipTool(t)
+                            break
+                        end
+                    end
                 end
 
                 -- Поиск ближайшего моба
@@ -328,38 +340,44 @@ task.spawn(function()
                     local mHrp = m:FindFirstChild("HumanoidRootPart")
                     if mHum and mHrp and mHum.Health > 0 then
                         local d = (hrp.Position - mHrp.Position).Magnitude
-                        if d < minDist then minDist = d; target = m end
+                        if d < minDist then
+                            minDist = d
+                            target = m
+                        end
                     end
                 end
 
-                -- Движение и атака
-                if target and target:FindFirstChild("HumanoidRootPart") then
+                if target then
                     local mPos = target.HumanoidRootPart.Position
                     local hrpPos = hrp.Position
 
-                    -- Плавный поворот камеры
+                    -- Плавная камера
                     local targetCamFocus = mPos + Vector3.new(0, 2.5, 0)
                     cam.CFrame = cam.CFrame:Lerp(CFrame.new(cam.CFrame.Position, targetCamFocus), camSpeed)
 
                     -- Движение к цели
                     if minDist > 4 then
                         hum:MoveTo(mPos)
+                        -- Обход препятствий
                         local wall = workspace:Raycast(hrpPos, hrp.CFrame.LookVector * 4)
-                        if wall then hum.Jump = true end
+                        if wall then
+                            hum.Jump = true
+                        end
                     else
-                        hum:MoveTo(hrpPos)
+                        hum:MoveTo(hrpPos)  -- стоим на месте
                     end
 
-                    -- ВЫЗОВ АТАКИ
+                    -- Атака
                     if minDist <= 8 and tick() - lastAttackTime >= attackCooldown then
                         attack()
                         lastAttackTime = tick()
                     end
                 else
+                    -- Нет целей – стоим
                     hum:MoveTo(hrp.Position)
                 end
 
-                -- Прокачка
+                -- Автопрокачка
                 if player:FindFirstChild("Data") and player.Data:FindFirstChild("Level") then
                     local currentLevel = player.Data.Level.Value
                     if currentLevel > lastLevel or (player.Data:FindFirstChild("Points") and player.Data.Points.Value > 0) then
@@ -371,3 +389,5 @@ task.spawn(function()
         end
     end
 end)
+
+print("✅ Скрипт загружен. Используйте GUI для управления.")
