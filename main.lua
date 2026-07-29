@@ -163,7 +163,7 @@ local function equipLight(char, hum)
     return false
 end
 
--- 🔥 СБРОС СТАРОГО/ЧУЖОГО КВЕСТА
+-- СБРОС СТАРОГО/ЧУЖОГО КВЕСТА
 local function abandonQuest()
     pcall(function()
         CommF:InvokeServer("AbandonQuest")
@@ -290,7 +290,7 @@ task.spawn(function()
     end
 end)
 
--- Наведение камеры
+-- 🔥 ИСПРАВЛЕННАЯ СТРОКА НАВЕДЕНИЯ КАМЕРЫ (Строка 295)
 getgenv().FarmConnection = RunService.RenderStepped:Connect(function()
     if not getgenv().Farm then return end
     if currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
@@ -366,7 +366,7 @@ task.spawn(function()
             local currentQuestData = getTargetQuestData(hrp)
             local activeMob = getActiveQuestMob()
 
-            -- 🔥 ЕСЛИ ВЗЯТ НЕСООТВЕТСТВУЮЩИЙ КВЕСТ (например, на Брутов) — АВТОМАТИЧЕСКИ СБРАСЫВАЕМ ЕГО!
+            -- СБРОС СТАРОГО КВЕСТА
             if activeMob and activeMob ~= currentQuestData.Mob and activeMob ~= currentQuestData.FallbackMob then
                 abandonQuest()
                 task.wait(0.2)
