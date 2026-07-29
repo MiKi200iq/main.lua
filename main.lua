@@ -385,7 +385,7 @@ task.spawn(function()
                 end
 
                 -- 🔥 КАЖДЫЕ 7 СЕКУНД: РАКЕТА ➔ СКИЛЛЫ ➔ ВОЗВРАТ ДВОЙНОЙ КАТАНЫ
-                if dist <= 30 and not isUsingFruitCombo and (now - lastFruitComboTime >= 9.0) then
+                if dist <= 30 and not isUsingFruitCombo and (now - lastFruitComboTime >= 11.0) then
                     lastFruitComboTime = now
                     isUsingFruitCombo = true
 
