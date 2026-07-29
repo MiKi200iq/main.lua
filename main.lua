@@ -107,60 +107,72 @@ local function autoStoreAllFruits()
     end)
 end
 
--- 🔥 ПРОВЕРКА НА МЕЧ (Sword)
-local function isSwordTool(tool)
-    if not tool or not tool:IsA("Tool") then return false end
-    local tt = tool:FindFirstChild("ToolTip")
-    if tt and tt.Value == "Sword" then return true end
-    local name = tool.Name:lower()
-    return name:find("katana") or name:find("cutlass") or name:find("sword") or name:find("blade")
+-- 🔥 ПОИСК ДВОЙНОЙ КАТАНЫ / МЕЧА
+local function getSwordTool()
+    -- 1. Ищем в персонаже (в руках)
+    if p.Character then
+        for _, item in pairs(p.Character:GetChildren()) do
+            if item:IsA("Tool") then
+                local tt = item:FindFirstChild("ToolTip") and item.ToolTip.Value or ""
+                if item.Name == "Dual Katana" or item.Name:find("Katana") or item.Name:find("Sword") or tt == "Sword" then
+                    return item
+                end
+            end
+        end
+    end
+    -- 2. Ищем в рюкзаке
+    for _, item in pairs(p.Backpack:GetChildren()) do
+        if item:IsA("Tool") then
+            local tt = item:FindFirstChild("ToolTip") and item.ToolTip.Value or ""
+            if item.Name == "Dual Katana" or item.Name:find("Katana") or item.Name:find("Sword") or tt == "Sword" then
+                return item
+            end
+        end
+    end
+    return nil
 end
 
--- 🔥 ПРОВЕРКА НА ФРУКТ / РАКЕТУ
-local function isFruitTool(tool)
-    if not tool or not tool:IsA("Tool") then return false end
-    local tt = tool:FindFirstChild("ToolTip")
-    if tt and (tt.Value == "Blox Fruit" or tt.Value == "Demon Fruit") then return true end
-    local name = tool.Name:lower()
-    return name:find("rocket") or name:find("fruit")
+-- 🔥 ПОИСК ФРУКТА РАКЕТА
+local function getRocketTool()
+    if p.Character then
+        for _, item in pairs(p.Character:GetChildren()) do
+            if item:IsA("Tool") and (item.Name:find("Rocket") or item.Name:find("Fruit")) then
+                return item
+            end
+        end
+    end
+    for _, item in pairs(p.Backpack:GetChildren()) do
+        if item:IsA("Tool") and (item.Name:find("Rocket") or item.Name:find("Fruit")) then
+            return item
+        end
+    end
+    return nil
 end
 
--- 🔥 ТОЧНАЯ ЭКИПИРОВКА МЕЧА / КАТАНЫ
+-- 🔥 БЕЗОПАСНАЯ ЭКИПИРОВКА ДВОЙНОЙ КАТАНЫ
 local function equipSword(char, hum)
     if not char or not hum then return false end
-    
-    local current = char:FindFirstChildOfClass("Tool")
-    if isSwordTool(current) then
-        return true
-    end
-
-    hum:UnequipTools()
-    task.wait(0.08)
-
-    for _, t in pairs(p.Backpack:GetChildren()) do
-        if isSwordTool(t) then
-            hum:EquipTool(t)
+    local sword = getSwordTool()
+    if sword then
+        if sword.Parent == char then
+            return true -- Уже в руках
+        else
+            hum:EquipTool(sword)
             return true
         end
     end
     return false
 end
 
--- ТОЧНАЯ ЭКИПИРОВКА РАКЕТЫ
+-- БЕЗОПАСНАЯ ЭКИПИРОВКА РАКЕТЫ
 local function equipRocket(char, hum)
     if not char or not hum then return false end
-    
-    local current = char:FindFirstChildOfClass("Tool")
-    if isFruitTool(current) then
-        return true
-    end
-
-    hum:UnequipTools()
-    task.wait(0.08)
-
-    for _, t in pairs(p.Backpack:GetChildren()) do
-        if isFruitTool(t) then
-            hum:EquipTool(t)
+    local rocket = getRocketTool()
+    if rocket then
+        if rocket.Parent == char then
+            return true -- Уже в руках
+        else
+            hum:EquipTool(rocket)
             return true
         end
     end
@@ -372,7 +384,7 @@ task.spawn(function()
                     end
                 end
 
-                -- 🔥 КАЖДЫЕ 7 СЕКУНД БЕРЕМ РАКЕТУ, ПРОЖИМАЕМ СКИЛЛЫ И ВОЗВРАЩАЕМ МЕЧ
+                -- 🔥 КАЖДЫЕ 7 СЕКУНД: РАКЕТА ➔ СКИЛЛЫ ➔ ВОЗВРАТ ДВОЙНОЙ КАТАНЫ
                 if dist <= 30 and not isUsingFruitCombo and (now - lastFruitComboTime >= 7.0) then
                     lastFruitComboTime = now
                     isUsingFruitCombo = true
@@ -381,26 +393,26 @@ task.spawn(function()
                         pcall(function()
                             -- 1. Берем Ракету
                             equipRocket(char, hum)
-                            task.wait(0.15)
+                            task.wait(0.2)
 
                             -- 2. Прожимаем скиллы Ракеты
                             pressKey(Enum.KeyCode.Z, 0x5A)
-                            task.wait(0.25)
+                            task.wait(0.3)
                             pressKey(Enum.KeyCode.X, 0x58)
-                            task.wait(0.25)
+                            task.wait(0.3)
                             pressKey(Enum.KeyCode.C, 0x43)
                             
-                            -- Задержка на анимацию скиллов
+                            -- Ждем завершения анимации
                             task.wait(0.6)
 
-                            -- 3. Возвращаем ИМЕННО Меч / Катану
+                            -- 3. Возвращаем Двойную Катану
                             equipSword(char, hum)
                         end)
                         isUsingFruitCombo = false
                     end)
                 end
 
-                -- ОСНОВНОЙ БОЙ МЕЧОМ (Если не идёт прокаст Ракеты)
+                -- 🔥 БОЙ ДВОЙНОЙ КАТАНОЙ (Авто-клик строго в ЦЕНТР экрана!)
                 if not isUsingFruitCombo and dist <= 10 and mHum and mHum.Health > 0 then
                     equipSword(char, hum)
                     if now - lastZTime >= 4.0 then
@@ -410,8 +422,11 @@ task.spawn(function()
                         lastXTime = now
                         pressKey(Enum.KeyCode.X, 0x58)
                     else
-                        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
-                        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+                        -- 🔥 Клик строго по центру экрана, не задевая меню/инвентарь!
+                        local centerX = cam.ViewportSize.X / 2
+                        local centerY = cam.ViewportSize.Y / 2
+                        VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, true, game, 1)
+                        VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, false, game, 1)
                     end
                 end
             end
