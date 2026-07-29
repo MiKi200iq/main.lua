@@ -197,7 +197,7 @@ task.spawn(function()
                     local movedDist = (hrp.Position - lastHrpPos).Magnitude
                     if movedDist < 0.4 then
                         stuckTimer = stuckTimer + 0.04
-                        if stuckTimer >= 0.25 then
+                        if stuckTimer >= 0.1 then
                             hum.Jump = true
                             pressKey(Enum.KeyCode.Space, 0x20)
                         end
