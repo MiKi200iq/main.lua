@@ -1,5 +1,4 @@
 getgenv().Farm = true
-getgenv().WeaponType = "Hybrid" -- "Hybrid" (Меч + Скиллы фрукта) или "Sword" (Только Меч)
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -13,9 +12,8 @@ local CommF = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_")
 local currentTarget = nil
 local lastFruitSpin = 0
 local lastDashTime = 0
-local lastZTime = tick()
-local lastXTime = tick()
-local lastCTime = tick()
+local lastZTime = 0
+local lastXTime = 0
 local isRecoveringHP = false
 
 local lastHrpPos = Vector3.new(0, 0, 0)
@@ -70,9 +68,7 @@ local function doubleJump()
             if hum then
                 hum.Jump = true
                 pressKey(Enum.KeyCode.Space, 0x20)
-                
                 task.wait(0.15)
-                
                 hum.Jump = true
                 pressKey(Enum.KeyCode.Space, 0x20)
             end
@@ -80,52 +76,13 @@ local function doubleJump()
     end)
 end
 
--- 🔥 ТОЧНОЕ ОПРЕДЕЛЕНИЕ ТИПА ПРЕДМЕТА
-local function isFruitTool(tool)
-    if not tool or not tool:IsA("Tool") then return false end
-    local tt = tool:FindFirstChild("ToolTip")
-    if tt and tt.Value == "Blox Fruit" then return true end
-    local name = tool.Name:lower()
-    return name:find("rocket") or name:find("fruit") or name:find("-")
-end
-
-local function isSwordTool(tool)
-    if not tool or not tool:IsA("Tool") then return false end
-    local tt = tool:FindFirstChild("ToolTip")
-    if tt and tt.Value == "Sword" then return true end
-    return not isFruitTool(tool)
-end
-
--- НАДЕЖНАЯ ЭКИПИРОВКА ОРУЖИЯ
-local function equipSpecificTool(char, hum, category)
-    local current = char:FindFirstChildOfClass("Tool")
-    if current then
-        if category == "Fruit" and isFruitTool(current) then return true end
-        if category == "Sword" and isSwordTool(current) then return true end
-    end
-
-    for _, t in pairs(p.Backpack:GetChildren()) do
-        if t:IsA("Tool") then
-            if category == "Fruit" and isFruitTool(t) then
-                hum:EquipTool(t)
-                return true
-            elseif category == "Sword" and isSwordTool(t) then
-                hum:EquipTool(t)
-                return true
-            end
-        end
-    end
-    return false
-end
-
--- АВТО-ПРОКАЧКА СТАТОВ
+-- АВТО-ПРОКАЧКА СТАТОВ (Меч + Защита)
 local function autoAddStats()
     pcall(function()
         local points = p.Data.Points.Value
         if points and points > 0 then
             CommF:InvokeServer("AddPoint", "Sword", 1)
             CommF:InvokeServer("AddPoint", "Defense", 1)
-            CommF:InvokeServer("AddPoint", "Demon Fruit", 1)
         end
     end)
 end
@@ -146,6 +103,20 @@ local function autoStoreAllFruits()
             end
         end
     end)
+end
+
+-- ЭКИПИРОВКА МЕЧА/КАТАНЫ (Без фрукт-свича)
+local function equipSword(char, hum)
+    local current = char:FindFirstChildOfClass("Tool")
+    if current and not current.Name:find("Fruit") then
+        return
+    end
+    for _, t in pairs(p.Backpack:GetChildren()) do
+        if t:IsA("Tool") and not t.Name:find("Fruit") then
+            hum:EquipTool(t)
+            break
+        end
+    end
 end
 
 -- ОПРЕДЕЛЕНИЕ ЦЕЛИ ПО ВИДИМОМУ КВЕСТУ В UI
@@ -306,25 +277,24 @@ task.spawn(function()
                 return
             end
 
-            -- ОПРЕДЕЛЕНИЕ ЦЕЛИ ПО АКТИВНОМУ КВЕСТУ В UI
+            -- Берем в руки строго Меч
+            equipSword(char, hum)
+
+            -- ОПРЕДЕЛЕНИЕ ЦЕЛИ ПО КВЕСТУ В UI
             local activeMob = getActiveQuestMob()
-            
-            -- Если задание ещё не взято — берем по уровню
             if not activeMob then
                 local qData = getCurrentQuestData()
                 takeQuest(qData.Name, qData.Level)
                 activeMob = qData.Mob
             end
 
-            -- Ищем моба строго под текущий квест
             currentTarget = getEnemy(activeMob, hrp)
 
-            -- Если моба нет поблизости — ищем на спавне
             if not currentTarget and Waypoints[activeMob] then
                 hum:MoveTo(Waypoints[activeMob])
             end
 
-            -- Движение и атака
+            -- Движение и чистая атака мечом
             if currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
                 local mHrp = currentTarget.HumanoidRootPart
                 local mHum = currentTarget:FindFirstChild("Humanoid")
@@ -333,7 +303,6 @@ task.spawn(function()
                 if dist > 5 then
                     hum:MoveTo(mHrp.Position)
 
-                    -- ДВОЙНОЙ ПРЫЖОК ПРИ ЗАТРЕВАНИИ
                     local movedDist = (hrp.Position - lastHrpPos).Magnitude
                     if movedDist < 0.4 then
                         stuckTimer = stuckTimer + 0.04
@@ -351,7 +320,6 @@ task.spawn(function()
 
                 local now = tick()
 
-                -- 1. Рывок на Q (при приближении)
                 if dist > 10 and dist < 35 then
                     if now - lastDashTime >= 0.8 then
                         lastDashTime = now
@@ -359,56 +327,29 @@ task.spawn(function()
                     end
                 end
 
-                -- 🔥 2. ГИБРИДНАЯ АТАКА (Катана M1 + Короткий свич на Ракету для Z, X, C)
+                -- Чистая атака мечом (ЛКМ + Скиллы Z и X)
                 if dist <= 10 and mHum and mHum.Health > 0 then
-                    if getgenv().WeaponType == "Hybrid" then
-                        if now - lastZTime >= 4.0 then
-                            equipSpecificTool(char, hum, "Fruit")
-                            task.wait(0.05)
-                            pressKey(Enum.KeyCode.Z, 0x5A)
-                            lastZTime = now
-                            task.wait(0.08)
-                            equipSpecificTool(char, hum, "Sword")
-                        elseif now - lastXTime >= 6.0 then
-                            equipSpecificTool(char, hum, "Fruit")
-                            task.wait(0.05)
-                            pressKey(Enum.KeyCode.X, 0x58)
-                            lastXTime = now
-                            task.wait(0.08)
-                            equipSpecificTool(char, hum, "Sword")
-                        elseif now - lastCTime >= 8.0 then
-                            equipSpecificTool(char, hum, "Fruit")
-                            task.wait(0.05)
-                            pressKey(Enum.KeyCode.C, 0x43)
-                            lastCTime = now
-                            task.wait(0.08)
-                            equipSpecificTool(char, hum, "Sword")
-                        else
-                            equipSpecificTool(char, hum, "Sword")
-                            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
-                            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
-                        end
+                    if now - lastZTime >= 4.0 then
+                        lastZTime = now
+                        pressKey(Enum.KeyCode.Z, 0x5A)
+                    elseif now - lastXTime >= 6.0 then
+                        lastXTime = now
+                        pressKey(Enum.KeyCode.X, 0x58)
                     else
-                        equipSpecificTool(char, hum, "Sword")
                         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
                         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
                     end
                 end
             end
 
-            -- Всплытие в воде и Raycast стен
             local state = hum:GetState()
-            if state == Enum.HumanoidStateType.Swimming then
-                hum.Jump = true
-            end
+            if state == Enum.HumanoidStateType.Swimming then hum.Jump = true end
 
             local rayParams = RaycastParams.new()
             rayParams.FilterDescendantsInstances = {char}
             rayParams.FilterType = Enum.RaycastFilterType.Exclude
             local wall = workspace:Raycast(hrp.Position, hrp.CFrame.LookVector * 4, rayParams)
-            if wall then
-                doubleJump()
-            end
+            if wall then doubleJump() end
         end)
     end
 end)
