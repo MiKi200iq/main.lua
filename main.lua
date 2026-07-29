@@ -14,6 +14,7 @@ local lastFruitSpin = 0
 local lastDashTime = 0
 local lastZTime = 0
 local lastXTime = 0
+local isRecoveringHP = false
 
 local lastHrpPos = Vector3.new(0, 0, 0)
 local stuckTimer = 0
@@ -42,6 +43,25 @@ local function pressKey(keyCode, charCode)
         task.wait(0.08)
         VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
         if keyrelease then keyrelease(charCode) end
+    end)
+end
+
+-- 🔥 ФУНКЦИЯ ДВОЙНОГО ПРЫЖКА
+local function doubleJump()
+    task.spawn(function()
+        pcall(function()
+            local char = p.Character
+            local hum = char and char:FindFirstChild("Humanoid")
+            if hum then
+                hum.Jump = true
+                pressKey(Enum.KeyCode.Space, 0x20)
+                
+                task.wait(0.15) -- Задержка перед вторым прыжком в воздухе
+                
+                hum.Jump = true
+                pressKey(Enum.KeyCode.Space, 0x20)
+            end
+        end)
     end)
 end
 
@@ -116,7 +136,7 @@ local function getJungleQuestData()
     return JungleQuests[1]
 end
 
--- Поток выбивания и сохранения фруктов + кача статов
+-- Фоновый поток для фруктов и статов
 task.spawn(function()
     while getgenv().Farm do
         autoStoreAllFruits()
@@ -149,7 +169,7 @@ getgenv().FarmConnection = RunService.RenderStepped:Connect(function()
     end
 end)
 
--- ОСНОВНОЙ ЦИКЛ (Фарм + Скиллы + Q-Рывок + Спам Пробела при застревании)
+-- ОСНОВНОЙ ЦИКЛ (Фарм + Скиллы + Q-Рывок + Убегание + Двойной прыжок)
 task.spawn(function()
     while getgenv().Farm do
         task.wait(0.04)
@@ -164,6 +184,46 @@ task.spawn(function()
             end
 
             hum.AutoRotate = true
+
+            -- УБЕГАНИЕ ПРИ НИЗКОМ ЗДОРОВЬЕ
+            if hum.Health < hum.MaxHealth * 0.35 then
+                isRecoveringHP = true
+            elseif hum.Health >= hum.MaxHealth * 0.85 then
+                isRecoveringHP = false
+            end
+
+            if isRecoveringHP then
+                currentTarget = nil
+                local qData = getJungleQuestData()
+                local enemy = getEnemy(qData.Mob, hrp)
+                
+                if enemy and enemy:FindFirstChild("HumanoidRootPart") then
+                    local eHrp = enemy.HumanoidRootPart
+                    local fleeDir = (hrp.Position - eHrp.Position).Unit
+                    local fleePos = hrp.Position + Vector3.new(fleeDir.X * 40, 0, fleeDir.Z * 40)
+                    
+                    hum:MoveTo(fleePos)
+
+                    local now = tick()
+                    if now - lastDashTime >= 1.0 then
+                        lastDashTime = now
+                        pressKey(Enum.KeyCode.Q, 0x51)
+                    end
+                else
+                    hum:MoveTo(hrp.Position)
+                end
+
+                local state = hum:GetState()
+                if state == Enum.HumanoidStateType.Swimming then hum.Jump = true end
+                local rayParams = RaycastParams.new()
+                rayParams.FilterDescendantsInstances = {char}
+                rayParams.FilterType = Enum.RaycastFilterType.Exclude
+                if workspace:Raycast(hrp.Position, hrp.CFrame.LookVector * 4, rayParams) then
+                    doubleJump()
+                end
+
+                return
+            end
 
             -- Экипировка оружия
             if not char:FindFirstChildOfClass("Tool") then
@@ -193,13 +253,12 @@ task.spawn(function()
                 if dist > 5 then
                     hum:MoveTo(mHrp.Position)
 
-                    -- ПРОВЕРКА НА ЗАТРЕВАНИЕ: Если не может приблизиться — спамит ПРОБЕЛ
+                    -- 🔥 ПРОВЕРКА НА ЗАТРЕВАНИЕ С ДВОЙНЫМ ПРЫЖКОМ
                     local movedDist = (hrp.Position - lastHrpPos).Magnitude
                     if movedDist < 0.4 then
                         stuckTimer = stuckTimer + 0.04
-                        if stuckTimer >= 0.1 then
-                            hum.Jump = true
-                            pressKey(Enum.KeyCode.Space, 0x20)
+                        if stuckTimer >= 0.25 then
+                            doubleJump() -- Делает двойной прыжок!
                         end
                     else
                         stuckTimer = 0
@@ -212,7 +271,7 @@ task.spawn(function()
 
                 local now = tick()
 
-                -- 1. Рывок на Q (при приближении от 10 до 35 студов) — ИСПРАВЛЕННАЯ СТРОКА
+                -- 1. Рывок на Q (при приближении)
                 if dist > 10 and dist < 35 then
                     if now - lastDashTime >= 0.8 then
                         lastDashTime = now
@@ -246,7 +305,7 @@ task.spawn(function()
             rayParams.FilterType = Enum.RaycastFilterType.Exclude
             local wall = workspace:Raycast(hrp.Position, hrp.CFrame.LookVector * 4, rayParams)
             if wall then
-                hum.Jump = true
+                doubleJump()
             end
         end)
     end
