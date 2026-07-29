@@ -1,5 +1,5 @@
 getgenv().Farm = true
-getgenv().WeaponType = "Fruit" -- "Fruit" (Фрукт) или "Sword" (Меч)
+getgenv().WeaponType = "Hybrid" -- Гибридный режим (Sword + Fruit Skills)
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -80,18 +80,41 @@ local function doubleJump()
     end)
 end
 
--- АВТО-ПРОКАЧКА СТАТОВ
+-- 🔥 ФУНКЦИЯ БЫСТРОЙ СМЕНЫ ОРУЖИЯ (Sword / Fruit)
+local function equipSpecificTool(char, hum, toolCategory)
+    local current = char:FindFirstChildOfClass("Tool")
+    if current then
+        local toolType = current:FindFirstChild("ToolTip") and current.ToolTip.Value or ""
+        if toolCategory == "Fruit" and (toolType == "Blox Fruit" or current.Name:find("Rocket") or current.Name:find("Fruit")) then
+            return true
+        elseif toolCategory == "Sword" and (toolType == "Sword" or not current.Name:find("Fruit")) then
+            return true
+        end
+    end
+
+    for _, t in pairs(p.Backpack:GetChildren()) do
+        if t:IsA("Tool") then
+            local tType = t:FindFirstChild("ToolTip") and t.ToolTip.Value or ""
+            if toolCategory == "Fruit" and (tType == "Blox Fruit" or t.Name:find("Rocket") or t.Name:find("Fruit")) then
+                hum:EquipTool(t)
+                return true
+            elseif toolCategory == "Sword" and (tType == "Sword" or not t.Name:find("Fruit")) then
+                hum:EquipTool(t)
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- АВТО-ПРОКАЧКА СТАТОВ (Гибридная распределение)
 local function autoAddStats()
     pcall(function()
         local points = p.Data.Points.Value
         if points and points > 0 then
-            if getgenv().WeaponType == "Fruit" then
-                CommF:InvokeServer("AddPoint", "Demon Fruit", 1)
-                CommF:InvokeServer("AddPoint", "Defense", 1)
-            else
-                CommF:InvokeServer("AddPoint", "Sword", 1)
-                CommF:InvokeServer("AddPoint", "Defense", 1)
-            end
+            CommF:InvokeServer("AddPoint", "Sword", 1)
+            CommF:InvokeServer("AddPoint", "Defense", 1)
+            CommF:InvokeServer("AddPoint", "Demon Fruit", 1)
         end
     end)
 end
@@ -114,12 +137,11 @@ local function autoStoreAllFruits()
     end)
 end
 
--- 🔥 ИСПРАВЛЕННОЕ ОПРЕДЕЛЕНИЕ ЦЕЛИ ПО ВИДИМОМУ КВЕСТУ В UI
+-- ОПРЕДЕЛЕНИЕ ЦЕЛИ ПО ВИДИМОМУ КВЕСТУ В UI
 local function getActiveQuestMob()
     local questGui = p:FindFirstChild("PlayerGui") and p.PlayerGui:FindFirstChild("Main") and p.PlayerGui.Main:FindFirstChild("Quest")
     if questGui and questGui.Visible then
         for _, v in pairs(questGui:GetDescendants()) do
-            -- Проверяем только видимый текст текущей цели квеста (Defeat/Убить)
             if v:IsA("TextLabel") and v.Visible and v.Text ~= "" then
                 local txt = v.Text
                 if txt:find("Defeat") or txt:find("Убить") or txt:find("%(%d+/%d+%)") then
@@ -182,37 +204,6 @@ local function getCurrentQuestData()
         end
     end
     return QuestList[1]
-end
-
--- ЭКИПИРОВКА НУЖНОГО ОРУЖИЯ (ФРУКТ ИЛИ МЕЧ)
-local function equipWeapon(char, hum)
-    local equipped = char:FindFirstChildOfClass("Tool")
-    local needFruit = (getgenv().WeaponType == "Fruit")
-    
-    local isCorrectEquipped = false
-    if equipped then
-        local toolType = equipped:FindFirstChild("ToolTip") and equipped.ToolTip.Value or ""
-        if needFruit and (toolType == "Blox Fruit" or equipped.Name:find("Rocket") or equipped.Name:find("Fruit")) then
-            isCorrectEquipped = true
-        elseif not needFruit and toolType == "Sword" then
-            isCorrectEquipped = true
-        end
-    end
-
-    if not isCorrectEquipped then
-        for _, t in pairs(p.Backpack:GetChildren()) do
-            if t:IsA("Tool") then
-                local tType = t:FindFirstChild("ToolTip") and t.ToolTip.Value or ""
-                if needFruit and (tType == "Blox Fruit" or t.Name:find("Rocket") or t.Name:find("Fruit")) then
-                    hum:EquipTool(t)
-                    break
-                elseif not needFruit and (tType == "Sword" or not t.Name:find("Fruit")) then
-                    hum:EquipTool(t)
-                    break
-                end
-            end
-        end
-    end
 end
 
 -- Фоновый поток для фруктов и статов
@@ -304,9 +295,6 @@ task.spawn(function()
                 return
             end
 
-            -- Экипировка нужного оружия (Фрукт / Меч)
-            equipWeapon(char, hum)
-
             -- ОПРЕДЕЛЕНИЕ ЦЕЛИ ПО АКТИВНОМУ КВЕСТУ В UI
             local activeMob = getActiveQuestMob()
             
@@ -360,18 +348,32 @@ task.spawn(function()
                     end
                 end
 
-                -- 2. Атака предметом в руках (ЛКМ) и Скиллы (Z, X, C)
+                -- 🔥 2. ГИБРИДНАЯ АТАКА (Меч M1 + Быстрое переключение на Фрукт для Z, X, C)
                 if dist <= 10 and mHum and mHum.Health > 0 then
                     if now - lastZTime >= 3.5 then
-                        lastZTime = now
+                        equipSpecificTool(char, hum, "Fruit")
+                        task.wait(0.05)
                         pressKey(Enum.KeyCode.Z, 0x5A)
+                        lastZTime = now
+                        task.wait(0.1)
+                        equipSpecificTool(char, hum, "Sword")
                     elseif now - lastXTime >= 5.5 then
-                        lastXTime = now
+                        equipSpecificTool(char, hum, "Fruit")
+                        task.wait(0.05)
                         pressKey(Enum.KeyCode.X, 0x58)
+                        lastXTime = now
+                        task.wait(0.1)
+                        equipSpecificTool(char, hum, "Sword")
                     elseif now - lastCTime >= 7.0 then
-                        lastCTime = now
+                        equipSpecificTool(char, hum, "Fruit")
+                        task.wait(0.05)
                         pressKey(Enum.KeyCode.C, 0x43)
+                        lastCTime = now
+                        task.wait(0.1)
+                        equipSpecificTool(char, hum, "Sword")
                     else
+                        -- Основной непрерывный урон мечом
+                        equipSpecificTool(char, hum, "Sword")
                         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
                         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
                     end
