@@ -320,11 +320,20 @@ task.spawn(function()
                 end
 
                 -- Автоудар
-                if minDist <= 7.5 then
-                    game:GetService("VirtualInputManager"):SendMouseButtonEvent(0, 0, 0, true, game, 1)
-                    game:GetService("VirtualInputManager"):SendMouseButtonEvent(0, 0, 0, false, game, 1)
-                end
-            end
+                if minDist <= 8 then
+    local tool = c:FindFirstChildOfClass("Tool")
+    if tool then
+        tool:Activate()
+        -- Запрос на авто-атаку для Blox Fruits
+        local net = game:GetService("ReplicatedStorage"):FindFirstChild("Modules") 
+            and game:GetService("ReplicatedStorage").Modules:FindFirstChild("Net")
+        if net then
+            pcall(function()
+                net:FindFirstChild("RE/RegisterAttack"):FireServer()
+            end)
+        end
+    end
+end
 
             -- Проверка уровня для автопрокачки
             if player.Data and player.Data.Level then
