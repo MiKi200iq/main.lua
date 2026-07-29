@@ -11,6 +11,7 @@ local CommF = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_")
 
 local currentTarget = nil
 local lastFruitSpin = 0
+local lastDashTime = 0
 
 -- Координаты точек спавна мобов в Джунглях
 local Waypoints = {
@@ -46,6 +47,13 @@ local function autoStoreAllFruits()
     end)
 end
 
+-- Функция нажатия клавиш для скиллов и рывка
+local function pressKey(keyCode)
+    VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
+    task.wait(0.02)
+    VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
+end
+
 -- Взятие квеста
 local function takeQuest(questName, questLevel)
     pcall(function()
@@ -63,7 +71,6 @@ local function getEnemy(mobName, hrp)
 
     local target, minDist = nil, math.huge
     for _, m in pairs(enemiesFolder:GetChildren()) do
-        -- Исключаем любых боссов (King)
         if m.Name:find(mobName) and not m.Name:find("King") then
             local mHum = m:FindFirstChild("Humanoid")
             local mHrp = m:FindFirstChild("HumanoidRootPart")
@@ -120,7 +127,7 @@ getgenv().FarmConnection = RunService.RenderStepped:Connect(function()
     end
 end)
 
--- ОСНОВНОЙ ЦИКЛ (Фарм + Плавание + Прыжки)
+-- ОСНОВНОЙ ЦИКЛ (Фарм + Скиллы + Q-Рывок + Прыжки + Всплытие)
 task.spawn(function()
     while getgenv().Farm do
         task.wait(0.04)
@@ -136,7 +143,7 @@ task.spawn(function()
 
             hum.AutoRotate = true
 
-            -- Экипировка боевого оружия (не фрукта)
+            -- Экипировка оружия (Катаны или Стиля боя)
             if not char:FindFirstChildOfClass("Tool") then
                 for _, t in pairs(p.Backpack:GetChildren()) do
                     if t:IsA("Tool") and not t.Name:find("Fruit") then
@@ -151,12 +158,12 @@ task.spawn(function()
             takeQuest(qData.Name, qData.Level)
             currentTarget = getEnemy(qData.Mob, hrp)
 
-            -- Если моб далеко или еще не спавнился — бежим к его острову/зоне
+            -- Если моб далеко — бежим в точку спавна
             if not currentTarget and Waypoints[qData.Mob] then
                 hum:MoveTo(Waypoints[qData.Mob])
             end
 
-            -- Бег к цели и нанесение урона
+            -- Логика движения, атаки и использования скиллов
             if currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
                 local mHrp = currentTarget.HumanoidRootPart
                 local mHum = currentTarget:FindFirstChild("Humanoid")
@@ -166,21 +173,35 @@ task.spawn(function()
                     hum:MoveTo(mHrp.Position)
                 end
 
-                -- Удар
-                if dist <= 8 and mHum and mHum.Health > 0 then
+                -- 🔥 ИСПОЛЬЗОВАНИЕ РЫВКА (Q) ДЛЯ СБЛИЖЕНИЯ
+                if dist > 10 and dist < 35 then
+                    local now = tick()
+                    if now - lastDashTime >= 1.5 then -- Кулдаун 1.5 секунды
+                        lastDashTime = now
+                        pressKey(Enum.KeyCode.Q)
+                    end
+                end
+
+                -- 🔥 АТАКА (ЛКМ) И СКИЛЛЫ (Z, X)
+                if dist <= 12 and mHum and mHum.Health > 0 then
+                    -- Обычный удар ЛКМ
                     VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
                     VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+
+                    -- Использование скилла Z
+                    pressKey(Enum.KeyCode.Z)
+                    
+                    -- Использование скилла X
+                    pressKey(Enum.KeyCode.X)
                 end
             end
 
-            -- 🔥 ЛОГИКА ПЛАВАНИЯ И ПРЕОДОЛЕНИЯ ПРЕПЯТСТВИЙ
-            -- 1. Если упал в воду — всплывает и выпрыгивает на берег
+            -- ЛОГИКА ПЛАВАНИЯ И ПРЕОДОЛЕНИЯ ПРЕПЯТСТВИЙ
             local state = hum:GetState()
             if state == Enum.HumanoidStateType.Swimming then
                 hum.Jump = true
             end
 
-            -- 2. Если упёрся в стену на суше — подпрыгивает
             local rayParams = RaycastParams.new()
             rayParams.FilterDescendantsInstances = {char}
             rayParams.FilterType = Enum.RaycastFilterType.Exclude
