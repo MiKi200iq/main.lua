@@ -33,7 +33,7 @@ local Waypoints = {
     ["Bobby"] = Vector3.new(-1130, 14, 4080),
 }
 
--- КВЕСТЫ ПО УРОВНЮ (Используются, только если квест ещё не взяли)
+-- КВЕСТЫ ПО УРОВНЮ
 local QuestList = {
     -- Джунгли
     {Min = 10, Max = 14, Name = "JungleQuest", Level = 1, Mob = "Monkey"},
@@ -114,20 +114,22 @@ local function autoStoreAllFruits()
     end)
 end
 
--- 🔥 ОПРЕДЕЛЕНИЕ ЦЕЛИ ПО АКТИВНОМУ КВЕСТУ В ИНТЕРФЕЙСЕ (UI)
+-- 🔥 ИСПРАВЛЕННОЕ ОПРЕДЕЛЕНИЕ ЦЕЛИ ПО ВИДИМОМУ КВЕСТУ В UI
 local function getActiveQuestMob()
     local questGui = p:FindFirstChild("PlayerGui") and p.PlayerGui:FindFirstChild("Main") and p.PlayerGui.Main:FindFirstChild("Quest")
     if questGui and questGui.Visible then
         for _, v in pairs(questGui:GetDescendants()) do
-            if v:IsA("TextLabel") and v.Text ~= "" then
+            -- Проверяем только видимый текст текущей цели квеста (Defeat/Убить)
+            if v:IsA("TextLabel") and v.Visible and v.Text ~= "" then
                 local txt = v.Text
-                -- Проверяем сначала составные имена (Gorilla King), затем простые
-                if txt:find("Gorilla King") then return "Gorilla King" end
-                if txt:find("Gorilla") then return "Gorilla" end
-                if txt:find("Monkey") then return "Monkey" end
-                if txt:find("Pirate") then return "Pirate" end
-                if txt:find("Brute") then return "Brute" end
-                if txt:find("Bobby") then return "Bobby" end
+                if txt:find("Defeat") or txt:find("Убить") or txt:find("%(%d+/%d+%)") then
+                    if txt:find("Gorilla King") then return "Gorilla King" end
+                    if txt:find("Gorilla") then return "Gorilla" end
+                    if txt:find("Monkey") then return "Monkey" end
+                    if txt:find("Pirate") then return "Pirate" end
+                    if txt:find("Brute") then return "Brute" end
+                    if txt:find("Bobby") then return "Bobby" end
+                end
             end
         end
     end
@@ -154,7 +156,7 @@ local function getEnemy(mobName, hrp)
         if m.Name:find(mobName) then
             local isKing = m.Name:find("King")
             if mobName == "Gorilla" and isKing then
-                -- пропускаем Босса Горилл, если цель — обычные гориллы
+                -- пропускаем Босса Горилл, если квест на обычных горилл
             else
                 local mHum = m:FindFirstChild("Humanoid")
                 local mHrp = m:FindFirstChild("HumanoidRootPart")
@@ -305,7 +307,7 @@ task.spawn(function()
             -- Экипировка нужного оружия (Фрукт / Меч)
             equipWeapon(char, hum)
 
-            -- 🔥 ЛОГИКА ТРИГГЕРА ПО ТЕКУЩЕМУ ЗАДАНИЮ В UI
+            -- ОПРЕДЕЛЕНИЕ ЦЕЛИ ПО АКТИВНОМУ КВЕСТУ В UI
             local activeMob = getActiveQuestMob()
             
             -- Если задание ещё не взято — берем по уровню
