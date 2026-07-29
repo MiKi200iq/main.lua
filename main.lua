@@ -1,4 +1,5 @@
 getgenv().Farm = true
+getgenv().WeaponType = "Fruit" -- "Fruit" (Фрукт) или "Sword" (Меч)
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -14,24 +15,25 @@ local lastFruitSpin = 0
 local lastDashTime = 0
 local lastZTime = 0
 local lastXTime = 0
+local lastCTime = 0
 local isRecoveringHP = false
 
 local lastHrpPos = Vector3.new(0, 0, 0)
 local stuckTimer = 0
 
--- ТОЧКИ СПАВНА МОБОВ (Джунгли + Остров Пиратов)
+-- ТОЧКИ СПАВНА МОБОВ
 local Waypoints = {
-    -- Джунгли (10-29 lvl)
+    -- Джунгли
     ["Monkey"] = Vector3.new(-1600, 36, 150),
     ["Gorilla"] = Vector3.new(-1240, 6, -490),
     ["Gorilla King"] = Vector3.new(-1130, 15, -490),
-    -- Остров Пиратов (30-60 lvl)
+    -- Остров Пиратов
     ["Pirate"] = Vector3.new(-1115, 14, 3850),
     ["Brute"] = Vector3.new(-1145, 15, 4350),
     ["Bobby"] = Vector3.new(-1130, 14, 4080),
 }
 
--- СПИСОК КВЕСТОВ (Авто-выбор по уровню)
+-- КВЕСТЫ ПО УРОВНЮ (Используются, только если квест ещё не взяли)
 local QuestList = {
     -- Джунгли
     {Min = 10, Max = 14, Name = "JungleQuest", Level = 1, Mob = "Monkey"},
@@ -78,33 +80,58 @@ local function doubleJump()
     end)
 end
 
--- АВТО-ПРОКАЧКА СТАТОВ (Sword и Defense)
+-- АВТО-ПРОКАЧКА СТАТОВ
 local function autoAddStats()
     pcall(function()
         local points = p.Data.Points.Value
         if points and points > 0 then
-            CommF:InvokeServer("AddPoint", "Sword", 1)
-            CommF:InvokeServer("AddPoint", "Defense", 1)
+            if getgenv().WeaponType == "Fruit" then
+                CommF:InvokeServer("AddPoint", "Demon Fruit", 1)
+                CommF:InvokeServer("AddPoint", "Defense", 1)
+            else
+                CommF:InvokeServer("AddPoint", "Sword", 1)
+                CommF:InvokeServer("AddPoint", "Defense", 1)
+            end
         end
     end)
 end
 
--- Авто-сохранение фруктов в инвентарь
+-- Авто-сохранение физических фруктов из рулетки на склад
 local function autoStoreAllFruits()
     pcall(function()
         for _, item in pairs(p.Backpack:GetChildren()) do
-            if item:IsA("Tool") and (item.Name:find("Fruit") or item.Name:find("Фрукт")) then
+            if item:IsA("Tool") and item.Name:find("Fruit") and not item.Name:find("-") then
                 CommF:InvokeServer("StoreFruit", item.Name, item)
             end
         end
         if p.Character then
             for _, item in pairs(p.Character:GetChildren()) do
-                if item:IsA("Tool") and (item.Name:find("Fruit") or item.Name:find("Фрукт")) then
+                if item:IsA("Tool") and item.Name:find("Fruit") and not item.Name:find("-") then
                     CommF:InvokeServer("StoreFruit", item.Name, item)
                 end
             end
         end
     end)
+end
+
+-- 🔥 ОПРЕДЕЛЕНИЕ ЦЕЛИ ПО АКТИВНОМУ КВЕСТУ В ИНТЕРФЕЙСЕ (UI)
+local function getActiveQuestMob()
+    local questGui = p:FindFirstChild("PlayerGui") and p.PlayerGui:FindFirstChild("Main") and p.PlayerGui.Main:FindFirstChild("Quest")
+    if questGui and questGui.Visible then
+        for _, v in pairs(questGui:GetDescendants()) do
+            if v:IsA("TextLabel") and v.Text ~= "" then
+                local txt = v.Text
+                -- Проверяем сначала составные имена (Gorilla King), затем простые
+                if txt:find("Gorilla King") then return "Gorilla King" end
+                if txt:find("Gorilla") then return "Gorilla" end
+                if txt:find("Monkey") then return "Monkey" end
+                if txt:find("Pirate") then return "Pirate" end
+                if txt:find("Brute") then return "Brute" end
+                if txt:find("Bobby") then return "Bobby" end
+            end
+        end
+    end
+    return nil
 end
 
 -- Взятие квеста
@@ -117,7 +144,7 @@ local function takeQuest(questName, questLevel)
     end)
 end
 
--- УМНЫЙ ПОИСК ЦЕЛИ
+-- УМНЫЙ ПОИСК ЦЕЛИ В ПАПКЕ ВРАГОВ
 local function getEnemy(mobName, hrp)
     local enemiesFolder = workspace:FindFirstChild("Enemies")
     if not enemiesFolder then return nil end
@@ -127,7 +154,7 @@ local function getEnemy(mobName, hrp)
         if m.Name:find(mobName) then
             local isKing = m.Name:find("King")
             if mobName == "Gorilla" and isKing then
-                -- пропускаем босса, если квест на обычных горилл
+                -- пропускаем Босса Горилл, если цель — обычные гориллы
             else
                 local mHum = m:FindFirstChild("Humanoid")
                 local mHrp = m:FindFirstChild("HumanoidRootPart")
@@ -153,6 +180,37 @@ local function getCurrentQuestData()
         end
     end
     return QuestList[1]
+end
+
+-- ЭКИПИРОВКА НУЖНОГО ОРУЖИЯ (ФРУКТ ИЛИ МЕЧ)
+local function equipWeapon(char, hum)
+    local equipped = char:FindFirstChildOfClass("Tool")
+    local needFruit = (getgenv().WeaponType == "Fruit")
+    
+    local isCorrectEquipped = false
+    if equipped then
+        local toolType = equipped:FindFirstChild("ToolTip") and equipped.ToolTip.Value or ""
+        if needFruit and (toolType == "Blox Fruit" or equipped.Name:find("Rocket") or equipped.Name:find("Fruit")) then
+            isCorrectEquipped = true
+        elseif not needFruit and toolType == "Sword" then
+            isCorrectEquipped = true
+        end
+    end
+
+    if not isCorrectEquipped then
+        for _, t in pairs(p.Backpack:GetChildren()) do
+            if t:IsA("Tool") then
+                local tType = t:FindFirstChild("ToolTip") and t.ToolTip.Value or ""
+                if needFruit and (tType == "Blox Fruit" or t.Name:find("Rocket") or t.Name:find("Fruit")) then
+                    hum:EquipTool(t)
+                    break
+                elseif not needFruit and (tType == "Sword" or not t.Name:find("Fruit")) then
+                    hum:EquipTool(t)
+                    break
+                end
+            end
+        end
+    end
 end
 
 -- Фоновый поток для фруктов и статов
@@ -205,16 +263,16 @@ task.spawn(function()
             hum.AutoRotate = true
 
             -- УБЕГАНИЕ ПРИ НИЗКОМ ЗДОРОВЬЕ (< 35%)
-            if hum.Health < hum.MaxHealth * 0.10 then
+            if hum.Health < hum.MaxHealth * 0.35 then
                 isRecoveringHP = true
-            elseif hum.Health >= hum.MaxHealth * 0.50 then
+            elseif hum.Health >= hum.MaxHealth * 0.85 then
                 isRecoveringHP = false
             end
 
             if isRecoveringHP then
                 currentTarget = nil
-                local qData = getCurrentQuestData()
-                local enemy = getEnemy(qData.Mob, hrp)
+                local targetMob = getActiveQuestMob() or getCurrentQuestData().Mob
+                local enemy = getEnemy(targetMob, hrp)
                 
                 if enemy and enemy:FindFirstChild("HumanoidRootPart") then
                     local eHrp = enemy.HumanoidRootPart
@@ -244,24 +302,25 @@ task.spawn(function()
                 return
             end
 
-            -- Экипировка оружия
-            if not char:FindFirstChildOfClass("Tool") then
-                for _, t in pairs(p.Backpack:GetChildren()) do
-                    if t:IsA("Tool") and not t.Name:find("Fruit") then
-                        hum:EquipTool(t)
-                        break
-                    end
-                end
+            -- Экипировка нужного оружия (Фрукт / Меч)
+            equipWeapon(char, hum)
+
+            -- 🔥 ЛОГИКА ТРИГГЕРА ПО ТЕКУЩЕМУ ЗАДАНИЮ В UI
+            local activeMob = getActiveQuestMob()
+            
+            -- Если задание ещё не взято — берем по уровню
+            if not activeMob then
+                local qData = getCurrentQuestData()
+                takeQuest(qData.Name, qData.Level)
+                activeMob = qData.Mob
             end
 
-            -- Квест и поиск цели
-            local qData = getCurrentQuestData()
-            takeQuest(qData.Name, qData.Level)
-            currentTarget = getEnemy(qData.Mob, hrp)
+            -- Ищем моба строго под текущий квест
+            currentTarget = getEnemy(activeMob, hrp)
 
-            -- Если моб не найден — идем на точку спавна
-            if not currentTarget and Waypoints[qData.Mob] then
-                hum:MoveTo(Waypoints[qData.Mob])
+            -- Если моба нет поблизости — ищем на спавне
+            if not currentTarget and Waypoints[activeMob] then
+                hum:MoveTo(Waypoints[activeMob])
             end
 
             -- Движение и атака
@@ -299,7 +358,7 @@ task.spawn(function()
                     end
                 end
 
-                -- 2. Атака (ЛКМ) и Скиллы (Z, X)
+                -- 2. Атака предметом в руках (ЛКМ) и Скиллы (Z, X, C)
                 if dist <= 10 and mHum and mHum.Health > 0 then
                     if now - lastZTime >= 3.5 then
                         lastZTime = now
@@ -307,6 +366,9 @@ task.spawn(function()
                     elseif now - lastXTime >= 5.5 then
                         lastXTime = now
                         pressKey(Enum.KeyCode.X, 0x58)
+                    elseif now - lastCTime >= 7.0 then
+                        lastCTime = now
+                        pressKey(Enum.KeyCode.C, 0x43)
                     else
                         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
                         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
