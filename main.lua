@@ -1,5 +1,5 @@
 --[[
-    Blox Fruits Farm + Улучшенный обход препятствий + GUI (Delta)
+    Blox Fruits Farm + Improved Obstacle Avoidance + GUI (Delta compatible)
 ]]
 
 getgenv().Farm = getgenv().Farm or false
@@ -13,7 +13,7 @@ local cam = workspace.CurrentCamera
 
 local currentTarget = nil
 
--- ==================== GUI ====================
+-- GUI для управления
 local function createGUI()
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "FarmGUI"
@@ -75,32 +75,29 @@ local function createGUI()
             toggleBtn.Text = "⏹ STOP"
             statusLabel.Text = "▶ RUNNING"
             statusLabel.TextColor3 = Color3.fromRGB(0, 255, 100)
+            -- запускаем фарм, если не запущен
             startFarm()
         else
             toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 100)
             toggleBtn.Text = "▶ START"
             statusLabel.Text = "⏹ OFF"
             statusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-            stopFarm()
+            -- останавливаем фарм
+            if getgenv().FarmConnection then
+                getgenv().FarmConnection:Disconnect()
+                getgenv().FarmConnection = nil
+            end
+            currentTarget = nil
+            local char = p.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if hum and hrp then
+                hum:MoveTo(hrp.Position)
+            end
         end
     end)
 
     return toggleBtn
-end
-
--- ==================== УПРАВЛЕНИЕ ====================
-local function stopFarm()
-    if getgenv().FarmConnection then
-        getgenv().FarmConnection:Disconnect()
-        getgenv().FarmConnection = nil
-    end
-    currentTarget = nil
-    local char = p.Character
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    local hrp = char and char:FindFirstChild("HumanoidRootPart")
-    if hum and hrp then
-        hum:MoveTo(hrp.Position)
-    end
 end
 
 local function startFarm()
@@ -109,7 +106,7 @@ local function startFarm()
         getgenv().FarmConnection = nil
     end
 
-    -- Плавная камера (RenderStepped)
+    -- Камера
     getgenv().FarmConnection = RunService.RenderStepped:Connect(function()
         if not getgenv().Farm then return end
         if currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
@@ -119,7 +116,7 @@ local function startFarm()
         end
     end)
 
-    -- Основной цикл фарма
+    -- Основной цикл
     spawn(function()
         while getgenv().Farm do
             wait(0.05)
@@ -134,7 +131,7 @@ local function startFarm()
 
                 hum.AutoRotate = true
 
-                -- Экипировка оружия
+                -- Экипировка
                 if not char:FindFirstChildOfClass("Tool") then
                     for _, t in pairs(p.Backpack:GetChildren()) do
                         if t:IsA("Tool") then
@@ -144,7 +141,7 @@ local function startFarm()
                     end
                 end
 
-                -- Поиск ближайшего моба
+                -- Поиск цели
                 local target, minDist = nil, math.huge
                 local enemiesFolder = workspace:FindFirstChild("Enemies")
                 if enemiesFolder then
@@ -167,7 +164,7 @@ local function startFarm()
                     local hrpPos = hrp.Position
                     local distance = (hrpPos - mPos).Magnitude
 
-                    -- Движение с обходом препятствий (улучшенный Raycast)
+                    -- Движение с обходом препятствий
                     if distance > 3 then
                         local direction = (mPos - hrpPos).Unit
                         local rayParams = RaycastParams.new()
@@ -200,7 +197,7 @@ local function startFarm()
                             hum:MoveTo(mPos)
                         end
                     else
-                        -- Если близко – стоим
+                        -- Если близко, стоим
                         hum:MoveTo(hrpPos)
                     end
 
@@ -215,10 +212,10 @@ local function startFarm()
     end)
 end
 
--- ==================== ЗАПУСК ====================
+-- Создаём GUI и запускаем фарм, если включен
 createGUI()
 if getgenv().Farm then
     startFarm()
 end
 
-print("✅ Скрипт загружен. Используйте GUI для управления.")
+print("✅ Farm script loaded. Use GUI to toggle.")
