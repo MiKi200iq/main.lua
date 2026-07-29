@@ -21,28 +21,46 @@ local isRecoveringHP = false
 local lastHrpPos = Vector3.new(0, 0, 0)
 local stuckTimer = 0
 
--- ТОЧКИ СПАВНА МОБОВ
+-- 🔥 ЕДИНАЯ СИСТЕМА ОСТРОВОВ И КВЕСТОВ (Ограничение по Max level УБРАНО)
+local Islands = {
+    {
+        Name = "Jungle",
+        Pos = Vector3.new(-1240, 6, -490),
+        Quests = {
+            {Req = 20, Name = "JungleQuest", Level = 3, Mob = "Gorilla King", FallbackMob = "Gorilla"},
+            {Req = 15, Name = "JungleQuest", Level = 2, Mob = "Gorilla", FallbackMob = "Monkey"},
+            {Req = 10, Name = "JungleQuest", Level = 1, Mob = "Monkey", FallbackMob = "Monkey"},
+        }
+    },
+    {
+        Name = "Pirate Village",
+        Pos = Vector3.new(-1115, 14, 3850),
+        Quests = {
+            {Req = 55, Name = "BuggyQuest1", Level = 3, Mob = "Bobby", FallbackMob = "Brute"},
+            {Req = 40, Name = "BuggyQuest1", Level = 2, Mob = "Brute", FallbackMob = "Pirate"},
+            {Req = 30, Name = "BuggyQuest1", Level = 1, Mob = "Pirate", FallbackMob = "Pirate"},
+        }
+    },
+    {
+        Name = "Desert",
+        Pos = Vector3.new(895, 7, 4370),
+        Quests = {
+            {Req = 75, Name = "DesertQuest", Level = 2, Mob = "Desert Officer", FallbackMob = "Desert Bandit"},
+            {Req = 60, Name = "DesertQuest", Level = 1, Mob = "Desert Bandit", FallbackMob = "Desert Bandit"},
+        }
+    }
+}
+
+-- Точки спавна мобов для перемещения
 local Waypoints = {
-    -- Джунгли
     ["Monkey"] = Vector3.new(-1600, 36, 150),
     ["Gorilla"] = Vector3.new(-1240, 6, -490),
     ["Gorilla King"] = Vector3.new(-1130, 15, -490),
-    -- Остров Пиратов
     ["Pirate"] = Vector3.new(-1115, 14, 3850),
     ["Brute"] = Vector3.new(-1145, 15, 4350),
     ["Bobby"] = Vector3.new(-1130, 14, 4080),
-}
-
--- КВЕСТЫ ПО УРОВНЮ
-local QuestList = {
-    -- Джунгли
-    {Min = 10, Max = 14, Name = "JungleQuest", Level = 1, Mob = "Monkey"},
-    {Min = 15, Max = 19, Name = "JungleQuest", Level = 2, Mob = "Gorilla"},
-    {Min = 20, Max = 29, Name = "JungleQuest", Level = 3, Mob = "Gorilla King"},
-    -- Остров Пиратов
-    {Min = 30, Max = 39, Name = "BuggyQuest1", Level = 1, Mob = "Pirate"},
-    {Min = 40, Max = 54, Name = "BuggyQuest1", Level = 2, Mob = "Brute"},
-    {Min = 55, Max = 59, Name = "BuggyQuest1", Level = 3, Mob = "Bobby"},
+    ["Desert Bandit"] = Vector3.new(895, 7, 4370),
+    ["Desert Officer"] = Vector3.new(950, 7, 4450),
 }
 
 if getgenv().FarmConnection then
@@ -107,9 +125,8 @@ local function autoStoreAllFruits()
     end)
 end
 
--- 🔥 ПОИСК ДВОЙНОЙ КАТАНЫ / МЕЧА
+-- ПОИСК ДВОЙНОЙ КАТАНЫ / МЕЧА
 local function getSwordTool()
-    -- 1. Ищем в персонаже (в руках)
     if p.Character then
         for _, item in pairs(p.Character:GetChildren()) do
             if item:IsA("Tool") then
@@ -120,7 +137,6 @@ local function getSwordTool()
             end
         end
     end
-    -- 2. Ищем в рюкзаке
     for _, item in pairs(p.Backpack:GetChildren()) do
         if item:IsA("Tool") then
             local tt = item:FindFirstChild("ToolTip") and item.ToolTip.Value or ""
@@ -132,7 +148,7 @@ local function getSwordTool()
     return nil
 end
 
--- 🔥 ПОИСК ФРУКТА РАКЕТА
+-- ПОИСК ФРУКТА РАКЕТА
 local function getRocketTool()
     if p.Character then
         for _, item in pairs(p.Character:GetChildren()) do
@@ -149,13 +165,13 @@ local function getRocketTool()
     return nil
 end
 
--- 🔥 БЕЗОПАСНАЯ ЭКИПИРОВКА ДВОЙНОЙ КАТАНЫ
+-- ЭКИПИРОВКА ДВОЙНОЙ КАТАНЫ
 local function equipSword(char, hum)
     if not char or not hum then return false end
     local sword = getSwordTool()
     if sword then
         if sword.Parent == char then
-            return true -- Уже в руках
+            return true
         else
             hum:EquipTool(sword)
             return true
@@ -164,13 +180,13 @@ local function equipSword(char, hum)
     return false
 end
 
--- БЕЗОПАСНАЯ ЭКИПИРОВКА РАКЕТЫ
+-- ЭКИПИРОВКА РАКЕТЫ
 local function equipRocket(char, hum)
     if not char or not hum then return false end
     local rocket = getRocketTool()
     if rocket then
         if rocket.Parent == char then
-            return true -- Уже в руках
+            return true
         else
             hum:EquipTool(rocket)
             return true
@@ -193,6 +209,8 @@ local function getActiveQuestMob()
                     if txt:find("Pirate") then return "Pirate" end
                     if txt:find("Brute") then return "Brute" end
                     if txt:find("Bobby") then return "Bobby" end
+                    if txt:find("Desert Officer") then return "Desert Officer" end
+                    if txt:find("Desert Bandit") then return "Desert Bandit" end
                 end
             end
         end
@@ -210,42 +228,71 @@ local function takeQuest(questName, questLevel)
     end)
 end
 
--- УМНЫЙ ПОИСК ЦЕЛИ В ПАПКЕ ВРАГОВ
-local function getEnemy(mobName, hrp)
+-- 🔥 АВТО-ПОИСК ЛУЧШЕГО КВЕСТА ДЛЯ ТЕКУЩЕГО ОСТРОВА
+local function getQuestForCurrentLocation(hrp)
+    local myLevel = p:FindFirstChild("Data") and p.Data:FindFirstChild("Level") and p.Data.Level.Value or 10
+    
+    -- Находим ближайший остров к игроку
+    local nearestIsland = Islands[1]
+    local minDist = math.huge
+    
+    for _, island in ipairs(Islands) do
+        local dist = (hrp.Position - island.Pos).Magnitude
+        if dist < minDist then
+            minDist = dist
+            nearestIsland = island
+        end
+    end
+    
+    -- Находим самый высокий доступный квест на этом острове
+    for _, q in ipairs(nearestIsland.Quests) do
+        if myLevel >= q.Req then
+            return q
+        end
+    end
+    
+    return nearestIsland.Quests[#nearestIsland.Quests]
+end
+
+-- УМНЫЙ ПОИСК ЦЕЛИ В ПАПКЕ ВРАГОВ (с поддержкой фоллбека)
+local function getEnemy(mobName, fallbackMob, hrp)
     local enemiesFolder = workspace:FindFirstChild("Enemies")
     if not enemiesFolder then return nil end
 
     local target, minDist = nil, math.huge
+    local fallbackTarget, fallbackMinDist = nil, math.huge
+
     for _, m in pairs(enemiesFolder:GetChildren()) do
-        if m.Name:find(mobName) then
-            local isKing = m.Name:find("King")
-            if mobName == "Gorilla" and isKing then
-                -- пропускаем
-            else
-                local mHum = m:FindFirstChild("Humanoid")
-                local mHrp = m:FindFirstChild("HumanoidRootPart")
-                if mHum and mHrp and mHum.Health > 0 then
-                    local dist = (hrp.Position - mHrp.Position).Magnitude
+        local mHum = m:FindFirstChild("Humanoid")
+        local mHrp = m:FindFirstChild("HumanoidRootPart")
+        
+        if mHum and mHrp and mHum.Health > 0 then
+            local dist = (hrp.Position - mHrp.Position).Magnitude
+            
+            -- Основная цель (например, Gorilla King)
+            if m.Name:find(mobName) then
+                local isKing = m.Name:find("King")
+                if mobName == "Gorilla" and isKing then
+                    -- пропускаем босса, если квест на обычных
+                else
                     if dist < minDist then
                         minDist = dist
                         target = m
                     end
                 end
             end
-        end
-    end
-    return target
-end
 
--- ПОЛУЧЕНИЕ ДАННЫХ КВЕСТА ПО УРОВНЮ
-local function getCurrentQuestData()
-    local myLevel = p:FindFirstChild("Data") and p.Data:FindFirstChild("Level") and p.Data.Level.Value or 10
-    for _, q in ipairs(QuestList) do
-        if myLevel >= q.Min and myLevel <= q.Max then
-            return q
+            -- Запасная цель (например, обычная Gorilla, если Босс еще не заспавнился)
+            if fallbackMob and m.Name:find(fallbackMob) and not m.Name:find("King") then
+                if dist < fallbackMinDist then
+                    fallbackMinDist = dist
+                    fallbackTarget = m
+                end
+            end
         end
     end
-    return QuestList[1]
+
+    return target or fallbackTarget
 end
 
 -- Фоновый поток для фруктов и статов
@@ -298,16 +345,16 @@ task.spawn(function()
             hum.AutoRotate = true
 
             -- УБЕГАНИЕ ПРИ НИЗКОМ ЗДОРОВЬЕ (< 35%)
-            if hum.Health < hum.MaxHealth * 0.10 then
+            if hum.Health < hum.MaxHealth * 0.35 then
                 isRecoveringHP = true
-            elseif hum.Health >= hum.MaxHealth * 0.50 then
+            elseif hum.Health >= hum.MaxHealth * 0.85 then
                 isRecoveringHP = false
             end
 
             if isRecoveringHP then
                 currentTarget = nil
-                local targetMob = getActiveQuestMob() or getCurrentQuestData().Mob
-                local enemy = getEnemy(targetMob, hrp)
+                local qData = getQuestForCurrentLocation(hrp)
+                local enemy = getEnemy(qData.Mob, qData.FallbackMob, hrp)
                 
                 if enemy and enemy:FindFirstChild("HumanoidRootPart") then
                     local eHrp = enemy.HumanoidRootPart
@@ -337,15 +384,17 @@ task.spawn(function()
                 return
             end
 
-            -- ОПРЕДЕЛЕНИЕ ЦЕЛИ ПО КВЕСТУ В UI
+            -- 🔥 ЛОГИКА ВЗЯТИЯ КВЕСТА НА ТЕКУЩЕМ ОСТРОВЕ
             local activeMob = getActiveQuestMob()
+            local currentQuestData = getQuestForCurrentLocation(hrp)
+
             if not activeMob then
-                local qData = getCurrentQuestData()
-                takeQuest(qData.Name, qData.Level)
-                activeMob = qData.Mob
+                takeQuest(currentQuestData.Name, currentQuestData.Level)
+                activeMob = currentQuestData.Mob
             end
 
-            currentTarget = getEnemy(activeMob, hrp)
+            -- Поиск моба (основной или запасной)
+            currentTarget = getEnemy(activeMob, currentQuestData.FallbackMob, hrp)
 
             if not currentTarget and Waypoints[activeMob] then
                 hum:MoveTo(Waypoints[activeMob])
@@ -362,7 +411,7 @@ task.spawn(function()
 
                     local movedDist = (hrp.Position - lastHrpPos).Magnitude
                     if movedDist < 0.4 then
-                        stuckTimer = stuckTimer + 0.09
+                        stuckTimer = stuckTimer + 0.04
                         if stuckTimer >= 0.25 then
                             doubleJump()
                         end
@@ -384,35 +433,31 @@ task.spawn(function()
                     end
                 end
 
-                -- 🔥 КАЖДЫЕ 7 СЕКУНД: РАКЕТА ➔ СКИЛЛЫ ➔ ВОЗВРАТ ДВОЙНОЙ КАТАНЫ
-                if dist <= 30 and not isUsingFruitCombo and (now - lastFruitComboTime >= 11.0) then
+                -- КАЖДЫЕ 7 СЕКУНД: РАКЕТА ➔ СКИЛЛЫ ➔ ВОЗВРАТ ДВОЙНОЙ КАТАНЫ
+                if dist <= 30 and not isUsingFruitCombo and (now - lastFruitComboTime >= 7.0) then
                     lastFruitComboTime = now
                     isUsingFruitCombo = true
 
                     task.spawn(function()
                         pcall(function()
-                            -- 1. Берем Ракету
                             equipRocket(char, hum)
                             task.wait(0.2)
 
-                            -- 2. Прожимаем скиллы Ракеты
                             pressKey(Enum.KeyCode.Z, 0x5A)
                             task.wait(0.3)
                             pressKey(Enum.KeyCode.X, 0x58)
                             task.wait(0.3)
                             pressKey(Enum.KeyCode.C, 0x43)
                             
-                            -- Ждем завершения анимации
                             task.wait(0.6)
 
-                            -- 3. Возвращаем Двойную Катану
                             equipSword(char, hum)
                         end)
                         isUsingFruitCombo = false
                     end)
                 end
 
-                -- 🔥 БОЙ ДВОЙНОЙ КАТАНОЙ (Авто-клик строго в ЦЕНТР экрана!)
+                -- БОЙ ДВОЙНОЙ КАТАНОЙ (Центральный клик)
                 if not isUsingFruitCombo and dist <= 10 and mHum and mHum.Health > 0 then
                     equipSword(char, hum)
                     if now - lastZTime >= 4.0 then
@@ -422,7 +467,6 @@ task.spawn(function()
                         lastXTime = now
                         pressKey(Enum.KeyCode.X, 0x58)
                     else
-                        -- 🔥 Клик строго по центру экрана, не задевая меню/инвентарь!
                         local centerX = cam.ViewportSize.X / 2
                         local centerY = cam.ViewportSize.Y / 2
                         VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, true, game, 1)
