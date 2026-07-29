@@ -5,6 +5,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 
 local player = Players.LocalPlayer
 
@@ -32,7 +33,7 @@ local function createGUI()
 
     -- Главное окно
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 250, 0, 320)
+    frame.Size = UDim2.new(0, 250, 0, 310)
     frame.Position = UDim2.new(0, 10, 0, 50)
     frame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
     frame.BackgroundTransparency = 0.1
@@ -108,7 +109,7 @@ local function createGUI()
     -- Чекбоксы статов
     local function createCheckbox(parent, yPos, text, default)
         local container = Instance.new("Frame")
-        container.Size = UDim2.new(0.9, 0, 0, 25)
+        container.Size = UDim2.new(0.9, 0, 0, 22)
         container.Position = UDim2.new(0.05, 0, 0, yPos)
         container.BackgroundTransparency = 1
         container.Parent = parent
@@ -124,7 +125,7 @@ local function createGUI()
         label.Parent = container
 
         local check = Instance.new("ImageButton")
-        check.Size = UDim2.new(0, 20, 0, 20)
+        check.Size = UDim2.new(0, 18, 0, 18)
         check.Position = UDim2.new(0.8, 0, 0.1, 0)
         check.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
         check.BorderSizePixel = 0
@@ -147,14 +148,14 @@ local function createGUI()
     end
 
     local checkboxes = {}
-    local yOffset = 110
+    local yOffset = 105
     local statNames = {"Melee", "Defense", "Sword", "Gun", "Fruit"}
     local defaultStates = {true, true, false, false, false}
 
     for i, name in ipairs(statNames) do
         local _, getState = createCheckbox(frame, yOffset, name, defaultStates[i])
         checkboxes[name] = getState
-        yOffset = yOffset + 28
+        yOffset = yOffset + 25
     end
 
     -- Кнопка "Применить"
@@ -274,27 +275,20 @@ gui.ToggleButton.MouseButton1Click:Connect(function()
     end
 end)
 
--- ========== 4. ПРЯМАЯ ФУНКЦИЯ АТАКИ BLOX FRUITS ==========
+-- ========== 4. РАБОЧАЯ ФУНКЦИЯ АТАКИ ==========
 local function attack()
     local char = player.Character
     if not char then return end
     
     local tool = char:FindFirstChildOfClass("Tool")
     if tool then
-        tool:Activate() -- Включаем анимацию
+        tool:Activate()
     end
 
-    -- Отправка сетевого пакета атаки Blox Fruits
-    pcall(function()
-        local net = ReplicatedStorage:FindFirstChild("Modules") and ReplicatedStorage.Modules:FindFirstChild("Net")
-        if net then
-            if net:FindFirstChild("RE/RegisterAttack") then
-                net["RE/RegisterAttack"]:FireServer()
-            elseif net:FindFirstChild("RE/RegisterBlade") then
-                net["RE/RegisterBlade"]:FireServer()
-            end
-        end
-    end)
+    -- Виртуальный клик мыши (обходит блокировки Blox Fruits)
+    VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+    task.wait(0.01)
+    VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
 end
 
 -- ========== 5. ОСНОВНОЙ ЦИКЛ ==========
@@ -302,7 +296,7 @@ task.spawn(function()
     local cam = workspace.CurrentCamera
     local camSpeed = 0.08
     local lastAttackTime = 0
-    local attackCooldown = 0.2
+    attackCooldown = 0.2
     
     local lastLevel = 0
     if player:FindFirstChild("Data") and player.Data:FindFirstChild("Level") then
@@ -343,11 +337,11 @@ task.spawn(function()
                     local mPos = target.HumanoidRootPart.Position
                     local hrpPos = hrp.Position
 
-                    -- Наводка камеры
+                    -- Плавный поворот камеры
                     local targetCamFocus = mPos + Vector3.new(0, 2.5, 0)
                     cam.CFrame = cam.CFrame:Lerp(CFrame.new(cam.CFrame.Position, targetCamFocus), camSpeed)
 
-                    -- Движение
+                    -- Движение к цели
                     if minDist > 4 then
                         hum:MoveTo(mPos)
                         local wall = workspace:Raycast(hrpPos, hrp.CFrame.LookVector * 4)
@@ -356,7 +350,7 @@ task.spawn(function()
                         hum:MoveTo(hrpPos)
                     end
 
-                    --🔥 ВЫЗОВ АТАКИ
+                    -- ВЫЗОВ АТАКИ
                     if minDist <= 8 and tick() - lastAttackTime >= attackCooldown then
                         attack()
                         lastAttackTime = tick()
@@ -365,7 +359,7 @@ task.spawn(function()
                     hum:MoveTo(hrp.Position)
                 end
 
-                -- Автопрокачка
+                -- Прокачка
                 if player:FindFirstChild("Data") and player.Data:FindFirstChild("Level") then
                     local currentLevel = player.Data.Level.Value
                     if currentLevel > lastLevel or (player.Data:FindFirstChild("Points") and player.Data.Points.Value > 0) then
