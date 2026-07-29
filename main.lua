@@ -156,20 +156,28 @@ local function equipLight(char, hum)
     return false
 end
 
--- 🔥 НАДЕЖНЫЙ СБРОС КВЕСТА ЧЕРЕЗ ИНТЕРФЕЙС
+-- 🔥 ИСПРАВЛЕННЫЙ СБРОС КВЕСТА (без :lower() и безопасный)
 local function abandonQuest()
     pcall(function()
         CommF:InvokeServer("AbandonQuest")
         local questGui = p:FindFirstChild("PlayerGui") and p.PlayerGui:FindFirstChild("Main") and p.PlayerGui.Main:FindFirstChild("Quest")
         if questGui then
             for _, v in pairs(questGui:GetDescendants()) do
-                if v:IsA("TextButton") and (v.Name:lower():find("cancel") or v.Name:lower():find("abandon") or v.Text:lower():find("отмена")) then
-                    for _, event in pairs({"MouseButton1Click", "MouseButton1Down", "Activated"}) do
-                        if getconnections then
-                            for _, conn in pairs(getconnections(v[event])) do
-                                conn:Fire()
+                if v:IsA("TextButton") then
+                    local name = v.Name and string.lower(v.Name) or ""
+                    local text = v.Text and string.lower(v.Text) or ""
+                    if name:find("cancel") or name:find("abandon") or text:find("отмена") then
+                        -- Безопасный вызов события
+                        pcall(function()
+                            v:Activate()
+                        end)
+                        pcall(function()
+                            if getconnections then
+                                for _, conn in pairs(getconnections(v.MouseButton1Click)) do
+                                    conn:Fire()
+                                end
                             end
-                        end
+                        end)
                     end
                 end
             end
@@ -350,21 +358,21 @@ task.spawn(function()
             local currentQuestData = getTargetQuestData(hrp)
             local activeMob = getActiveQuestMob()
 
-            -- 🔥 ПРИНУДИТЕЛЬНЫЙ СБРОС КВЕСТА, ЕСЛИ ОН НЕ ДЛЯ ДЖУНГЛЕЙ
+            -- Сброс квеста, если он не для текущего острова
             if activeMob and activeMob ~= currentQuestData.Mob and activeMob ~= currentQuestData.FallbackMob then
                 abandonQuest()
                 task.wait(0.3)
                 activeMob = nil
             end
 
-            -- 🔥 ЕСЛИ МЫ ДАЛЕКО ОТ ДЖУНГЛЕЙ — СНАЧАЛА ИДЕМ К ДЖУНГЛЯМ!
+            -- Если мы далеко от острова — идём к нему
             local distToIsland = (hrp.Position - currentIslandData.Pos).Magnitude
             if distToIsland > 350 then
                 hum:MoveTo(currentIslandData.Pos)
                 return
             end
 
-            -- ВЗЯТИЕ КВЕСТА ДЖУНГЛЕЙ
+            -- Взятие квеста
             if not activeMob then
                 takeQuest(currentQuestData.Name, currentQuestData.Level)
                 activeMob = currentQuestData.Mob
@@ -376,7 +384,7 @@ task.spawn(function()
                 hum:MoveTo(Waypoints[activeMob])
             end
 
-            -- ДВИЖЕНИЕ И БОЙ
+            -- Движение и бой
             if currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
                 local mHrp = currentTarget.HumanoidRootPart
                 local mHum = currentTarget:FindFirstChild("Humanoid")
@@ -438,3 +446,5 @@ task.spawn(function()
         end)
     end
 end)
+
+print("✅ Скрипт загружен! Остров: " .. getgenv().SelectedIsland)
