@@ -107,42 +107,59 @@ local function autoStoreAllFruits()
     end)
 end
 
--- 🔥 ГАРАНТИРОВАННАЯ ЭКИПИРОВКА МЕЧА
-local function equipSword(char, hum)
-    if not char or not hum then return end
-    
-    local current = char:FindFirstChildOfClass("Tool")
-    if current and not current.Name:find("Fruit") and not current.Name:find("Rocket") then
-        return true
-    end
-
-    -- Убираем все текущие предметы из рук
-    hum:UnequipTools()
-    task.wait(0.05)
-
-    -- Достаем Меч
-    for _, t in pairs(p.Backpack:GetChildren()) do
-        if t:IsA("Tool") and not t.Name:find("Fruit") and not t.Name:find("Rocket") then
-            hum:EquipTool(t)
-            break
-        end
-    end
+-- 🔥 ПРОВЕРКА НА МЕЧ (Sword)
+local function isSwordTool(tool)
+    if not tool or not tool:IsA("Tool") then return false end
+    local tt = tool:FindFirstChild("ToolTip")
+    if tt and tt.Value == "Sword" then return true end
+    local name = tool.Name:lower()
+    return name:find("katana") or name:find("cutlass") or name:find("sword") or name:find("blade")
 end
 
--- ЭКИПИРОВКА РАКЕТЫ
-local function equipRocket(char, hum)
-    if not char or not hum then return end
+-- 🔥 ПРОВЕРКА НА ФРУКТ / РАКЕТУ
+local function isFruitTool(tool)
+    if not tool or not tool:IsA("Tool") then return false end
+    local tt = tool:FindFirstChild("ToolTip")
+    if tt and (tt.Value == "Blox Fruit" or tt.Value == "Demon Fruit") then return true end
+    local name = tool.Name:lower()
+    return name:find("rocket") or name:find("fruit")
+end
+
+-- 🔥 ТОЧНАЯ ЭКИПИРОВКА МЕЧА / КАТАНЫ
+local function equipSword(char, hum)
+    if not char or not hum then return false end
     
     local current = char:FindFirstChildOfClass("Tool")
-    if current and (current.Name:find("Rocket") or current.Name:find("Fruit")) then
+    if isSwordTool(current) then
         return true
     end
 
     hum:UnequipTools()
-    task.wait(0.05)
+    task.wait(0.08)
 
     for _, t in pairs(p.Backpack:GetChildren()) do
-        if t:IsA("Tool") and (t.Name:find("Rocket") or t.Name:find("Fruit")) then
+        if isSwordTool(t) then
+            hum:EquipTool(t)
+            return true
+        end
+    end
+    return false
+end
+
+-- ТОЧНАЯ ЭКИПИРОВКА РАКЕТЫ
+local function equipRocket(char, hum)
+    if not char or not hum then return false end
+    
+    local current = char:FindFirstChildOfClass("Tool")
+    if isFruitTool(current) then
+        return true
+    end
+
+    hum:UnequipTools()
+    task.wait(0.08)
+
+    for _, t in pairs(p.Backpack:GetChildren()) do
+        if isFruitTool(t) then
             hum:EquipTool(t)
             return true
         end
@@ -373,17 +390,17 @@ task.spawn(function()
                             task.wait(0.25)
                             pressKey(Enum.KeyCode.C, 0x43)
                             
-                            -- Ждем завершения анимации скиллов перед сменой оружия!
+                            -- Задержка на анимацию скиллов
                             task.wait(0.6)
 
-                            -- 3. Надежно возвращаем Меч обратно
+                            -- 3. Возвращаем ИМЕННО Меч / Катану
                             equipSword(char, hum)
                         end)
                         isUsingFruitCombo = false
                     end)
                 end
 
-                -- ОСНОВНОЙ БОЙ МЕЧОМ (Если сейчас не идет прокаст Ракеты)
+                -- ОСНОВНОЙ БОЙ МЕЧОМ (Если не идёт прокаст Ракеты)
                 if not isUsingFruitCombo and dist <= 10 and mHum and mHum.Health > 0 then
                     equipSword(char, hum)
                     if now - lastZTime >= 4.0 then
