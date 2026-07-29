@@ -5,11 +5,10 @@ task.spawn(function()
     local cam = workspace.CurrentCamera
     local vim = game:GetService("VirtualInputManager")
     local lastAttackTime = 0
-    local attackCooldown = 0.25
-    
-    -- Отключаем автоматическое вращение камеры
-    p.CameraMinZoomDistance = 0.5
-    p.CameraMaxZoomDistance = 50
+    local attackCooldown = 0.3
+
+    -- Отключаем автоповорот персонажа (чтобы камера управляла направлением)
+    p.CharacterAutoRotate = false
 
     while getgenv().Farm do
         task.wait(0.05)
@@ -19,7 +18,7 @@ task.spawn(function()
             local hum = char and char:FindFirstChild("Humanoid")
             if not hrp or not hum or hum.Health <= 0 then return end
 
-            -- Экипировка
+            -- Экипировка оружия
             if not char:FindFirstChildOfClass("Tool") then
                 for _, t in pairs(p.Backpack:GetChildren()) do
                     if t:IsA("Tool") then
@@ -29,7 +28,7 @@ task.spawn(function()
                 end
             end
 
-            -- Поиск цели
+            -- Поиск ближайшего моба
             local target, minDist = nil, math.huge
             for _, m in pairs(workspace.Enemies:GetChildren()) do
                 local mHum = m:FindFirstChild("Humanoid")
@@ -48,40 +47,28 @@ task.spawn(function()
                 local hrpPos = hrp.Position
                 local distance = (hrpPos - mPos).Magnitude
 
-                -- ПЛАВНАЯ КАМЕРА (медленный поворот)
+                -- Плавный поворот камеры к цели
                 local targetFocus = mPos + Vector3.new(0, 2.5, 0)
-                local newCF = CFrame.new(cam.CFrame.Position, targetFocus)
-                cam.CFrame = cam.CFrame:Lerp(newCF, 0.08) -- Очень медленный поворот
+                cam.CFrame = cam.CFrame:Lerp(CFrame.new(cam.CFrame.Position, targetFocus), 0.1)
 
-                -- ПРОСТОЕ ДВИЖЕНИЕ (без Pathfinding, чтобы не упираться)
-                if distance > 5 then
-                    -- Двигаемся к цели, но с остановкой перед препятствием
-                    hum:MoveTo(mPos)
-                    
-                    -- Проверяем, не уперлись ли мы в стену
-                    task.wait(0.02)
-                    local newPos = hrp.Position
-                    if (newPos - hrpPos).Magnitude < 0.1 and distance > 10 then
-                        -- Если не двигаемся - пробуем обойти в сторону
-                        local sidePos = mPos + Vector3.new(
-                            math.random(-5, 5), 
-                            0, 
-                            math.random(-5, 5)
-                        )
-                        hum:MoveTo(sidePos)
+                -- ДВИЖЕНИЕ: ВСЕГДА бежим к цели, НЕ останавливаемся
+                hum:MoveTo(mPos)
+
+                -- АТАКА, если цель в радиусе (даже на ходу)
+                if distance <= 8 and tick() - lastAttackTime >= attackCooldown then
+                    -- Проверяем, что камера смотрит примерно на цель (чтобы атака была точной)
+                    local lookVec = cam.CFrame.LookVector
+                    local toTarget = (mPos - hrpPos).Unit
+                    if lookVec:Dot(toTarget) > 0.5 then
+                        vim:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+                        task.wait(0.02)
+                        vim:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+                        lastAttackTime = tick()
                     end
-                else
-                    -- Останавливаемся рядом с целью
-                    hum:MoveTo(hrpPos)
                 end
-
-                -- АТАКА
-                if distance <= 7 and tick() - lastAttackTime >= attackCooldown then
-                    vim:SendMouseButtonEvent(0, 0, 0, true, game, 1)
-                    task.wait(0.02)
-                    vim:SendMouseButtonEvent(0, 0, 0, false, game, 1)
-                    lastAttackTime = tick()
-                end
+            else
+                -- Нет целей – стоим на месте
+                hum:MoveTo(hrp.Position)
             end
         end)
     end
