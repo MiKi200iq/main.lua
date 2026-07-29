@@ -12,16 +12,18 @@ local CommF = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_")
 local currentTarget = nil
 local lastFruitSpin = 0
 local lastDashTime = 0
+local isRecoveringHP = false
+
+-- Таймеры скиллов Света
 local lastZTime = 0
 local lastXTime = 0
-local lastFruitComboTime = 0
-local isUsingFruitCombo = false
-local isRecoveringHP = false
+local lastCTime = 0
+local lastVTime = 0
 
 local lastHrpPos = Vector3.new(0, 0, 0)
 local stuckTimer = 0
 
--- 🔥 ЕДИНАЯ СИСТЕМА ОСТРОВОВ И КВЕСТОВ (Ограничение по Max level УБРАНО)
+-- ЕДИНАЯ СИСТЕМА ОСТРОВОВ И КВЕСТОВ
 local Islands = {
     {
         Name = "Jungle",
@@ -51,7 +53,7 @@ local Islands = {
     }
 }
 
--- Точки спавна мобов для перемещения
+-- Точки спавна мобов
 local Waypoints = {
     ["Monkey"] = Vector3.new(-1600, 36, 150),
     ["Gorilla"] = Vector3.new(-1240, 6, -490),
@@ -96,18 +98,18 @@ local function doubleJump()
     end)
 end
 
--- АВТО-ПРОКАЧКА СТАТОВ
+-- 🔥 АВТО-ПРОКАЧКА СТАТОВ ПОД СВЕТ (Demon Fruit + Defense)
 local function autoAddStats()
     pcall(function()
         local points = p.Data.Points.Value
         if points and points > 0 then
-            CommF:InvokeServer("AddPoint", "Sword", 1)
+            CommF:InvokeServer("AddPoint", "Demon Fruit", 1)
             CommF:InvokeServer("AddPoint", "Defense", 1)
         end
     end)
 end
 
--- Авто-сохранение физических фруктов на склад
+-- Авто-сохранение выбитых физических фруктов на склад
 local function autoStoreAllFruits()
     pcall(function()
         for _, item in pairs(p.Backpack:GetChildren()) do
@@ -125,13 +127,13 @@ local function autoStoreAllFruits()
     end)
 end
 
--- ПОИСК ДВОЙНОЙ КАТАНЫ / МЕЧА
-local function getSwordTool()
+-- 🔥 ПОИСК И ЭКИПИРОВКА ФРУКТА СВЕТ (LIGHT)
+local function getLightTool()
     if p.Character then
         for _, item in pairs(p.Character:GetChildren()) do
             if item:IsA("Tool") then
                 local tt = item:FindFirstChild("ToolTip") and item.ToolTip.Value or ""
-                if item.Name == "Dual Katana" or item.Name:find("Katana") or item.Name:find("Sword") or tt == "Sword" then
+                if item.Name:find("Light") or tt == "Blox Fruit" or tt == "Demon Fruit" then
                     return item
                 end
             end
@@ -140,7 +142,7 @@ local function getSwordTool()
     for _, item in pairs(p.Backpack:GetChildren()) do
         if item:IsA("Tool") then
             local tt = item:FindFirstChild("ToolTip") and item.ToolTip.Value or ""
-            if item.Name == "Dual Katana" or item.Name:find("Katana") or item.Name:find("Sword") or tt == "Sword" then
+            if item.Name:find("Light") or tt == "Blox Fruit" or tt == "Demon Fruit" then
                 return item
             end
         end
@@ -148,47 +150,14 @@ local function getSwordTool()
     return nil
 end
 
--- ПОИСК ФРУКТА РАКЕТА
-local function getRocketTool()
-    if p.Character then
-        for _, item in pairs(p.Character:GetChildren()) do
-            if item:IsA("Tool") and (item.Name:find("Rocket") or item.Name:find("Fruit")) then
-                return item
-            end
-        end
-    end
-    for _, item in pairs(p.Backpack:GetChildren()) do
-        if item:IsA("Tool") and (item.Name:find("Rocket") or item.Name:find("Fruit")) then
-            return item
-        end
-    end
-    return nil
-end
-
--- ЭКИПИРОВКА ДВОЙНОЙ КАТАНЫ
-local function equipSword(char, hum)
+local function equipLight(char, hum)
     if not char or not hum then return false end
-    local sword = getSwordTool()
-    if sword then
-        if sword.Parent == char then
+    local light = getLightTool()
+    if light then
+        if light.Parent == char then
             return true
         else
-            hum:EquipTool(sword)
-            return true
-        end
-    end
-    return false
-end
-
--- ЭКИПИРОВКА РАКЕТЫ
-local function equipRocket(char, hum)
-    if not char or not hum then return false end
-    local rocket = getRocketTool()
-    if rocket then
-        if rocket.Parent == char then
-            return true
-        else
-            hum:EquipTool(rocket)
+            hum:EquipTool(light)
             return true
         end
     end
@@ -228,11 +197,10 @@ local function takeQuest(questName, questLevel)
     end)
 end
 
--- 🔥 АВТО-ПОИСК ЛУЧШЕГО КВЕСТА ДЛЯ ТЕКУЩЕГО ОСТРОВА
+-- АВТО-ПОИСК ЛУЧШЕГО КВЕСТА ДЛЯ ТЕКУЩЕГО ОСТРОВА
 local function getQuestForCurrentLocation(hrp)
     local myLevel = p:FindFirstChild("Data") and p.Data:FindFirstChild("Level") and p.Data.Level.Value or 10
     
-    -- Находим ближайший остров к игроку
     local nearestIsland = Islands[1]
     local minDist = math.huge
     
@@ -244,7 +212,6 @@ local function getQuestForCurrentLocation(hrp)
         end
     end
     
-    -- Находим самый высокий доступный квест на этом острове
     for _, q in ipairs(nearestIsland.Quests) do
         if myLevel >= q.Req then
             return q
@@ -254,7 +221,7 @@ local function getQuestForCurrentLocation(hrp)
     return nearestIsland.Quests[#nearestIsland.Quests]
 end
 
--- УМНЫЙ ПОИСК ЦЕЛИ В ПАПКЕ ВРАГОВ (с поддержкой фоллбека)
+-- УМНЫЙ ПОИСК ЦЕЛИ В ПАПКЕ ВРАГОВ
 local function getEnemy(mobName, fallbackMob, hrp)
     local enemiesFolder = workspace:FindFirstChild("Enemies")
     if not enemiesFolder then return nil end
@@ -269,11 +236,10 @@ local function getEnemy(mobName, fallbackMob, hrp)
         if mHum and mHrp and mHum.Health > 0 then
             local dist = (hrp.Position - mHrp.Position).Magnitude
             
-            -- Основная цель (например, Gorilla King)
             if m.Name:find(mobName) then
                 local isKing = m.Name:find("King")
                 if mobName == "Gorilla" and isKing then
-                    -- пропускаем босса, если квест на обычных
+                    -- пропускаем
                 else
                     if dist < minDist then
                         minDist = dist
@@ -282,7 +248,6 @@ local function getEnemy(mobName, fallbackMob, hrp)
                 end
             end
 
-            -- Запасная цель (например, обычная Gorilla, если Босс еще не заспавнился)
             if fallbackMob and m.Name:find(fallbackMob) and not m.Name:find("King") then
                 if dist < fallbackMinDist then
                     fallbackMinDist = dist
@@ -384,7 +349,10 @@ task.spawn(function()
                 return
             end
 
-            -- 🔥 ЛОГИКА ВЗЯТИЯ КВЕСТА НА ТЕКУЩЕМ ОСТРОВЕ
+            -- 🔥 ГАРАНТИРОВАННО ДЕРЖИМ СВЕТ В РУКАХ
+            equipLight(char, hum)
+
+            -- ЛОГИКА ВЗЯТИЯ КВЕСТА
             local activeMob = getActiveQuestMob()
             local currentQuestData = getQuestForCurrentLocation(hrp)
 
@@ -393,14 +361,13 @@ task.spawn(function()
                 activeMob = currentQuestData.Mob
             end
 
-            -- Поиск моба (основной или запасной)
             currentTarget = getEnemy(activeMob, currentQuestData.FallbackMob, hrp)
 
             if not currentTarget and Waypoints[activeMob] then
                 hum:MoveTo(Waypoints[activeMob])
             end
 
-            -- Движение и атака
+            -- 🔥 ДВИЖЕНИЕ И АТАКА СВЕТОМ
             if currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
                 local mHrp = currentTarget.HumanoidRootPart
                 local mHum = currentTarget:FindFirstChild("Humanoid")
@@ -433,40 +400,23 @@ task.spawn(function()
                     end
                 end
 
-                -- КАЖДЫЕ 7 СЕКУНД: РАКЕТА ➔ СКИЛЛЫ ➔ ВОЗВРАТ ДВОЙНОЙ КАТАНЫ
-                if dist <= 30 and not isUsingFruitCombo and (now - lastFruitComboTime >= 7.0) then
-                    lastFruitComboTime = now
-                    isUsingFruitCombo = true
-
-                    task.spawn(function()
-                        pcall(function()
-                            equipRocket(char, hum)
-                            task.wait(0.2)
-
-                            pressKey(Enum.KeyCode.Z, 0x5A)
-                            task.wait(0.3)
-                            pressKey(Enum.KeyCode.X, 0x58)
-                            task.wait(0.3)
-                            pressKey(Enum.KeyCode.C, 0x43)
-                            
-                            task.wait(0.6)
-
-                            equipSword(char, hum)
-                        end)
-                        isUsingFruitCombo = false
-                    end)
-                end
-
-                -- БОЙ ДВОЙНОЙ КАТАНОЙ (Центральный клик)
-                if not isUsingFruitCombo and dist <= 10 and mHum and mHum.Health > 0 then
-                    equipSword(char, hum)
-                    if now - lastZTime >= 4.0 then
+                -- 🔥 БОЙ ФРУКТОМ СВЕТ (Скиллы Z, X, C, V + ЛКМ Световым мечом)
+                if dist <= 12 and mHum and mHum.Health > 0 then
+                    -- Прокаст способностей по откату
+                    if now - lastZTime >= 3.5 then
                         lastZTime = now
                         pressKey(Enum.KeyCode.Z, 0x5A)
-                    elseif now - lastXTime >= 6.0 then
+                    elseif now - lastXTime >= 5.5 then
                         lastXTime = now
                         pressKey(Enum.KeyCode.X, 0x58)
+                    elseif now - lastCTime >= 7.5 then
+                        lastCTime = now
+                        pressKey(Enum.KeyCode.C, 0x43)
+                    elseif now - lastVTime >= 12.0 then
+                        lastVTime = now
+                        pressKey(Enum.KeyCode.V, 0x56)
                     else
+                        -- Непрерывные удары Световым мечом (ЛКМ по центру экрана)
                         local centerX = cam.ViewportSize.X / 2
                         local centerY = cam.ViewportSize.Y / 2
                         VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, true, game, 1)
