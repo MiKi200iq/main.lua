@@ -29,16 +29,14 @@ if getgenv().FarmConnection then
     getgenv().FarmConnection = nil
 end
 
--- 🔥 МГНОВЕННОЕ СОХРАНЕНИЕ ЛЮБЫХ ФРУКТОВ ИЗ РЮКЗАКА И РУК
+-- Авто-сохранение фруктов
 local function autoStoreAllFruits()
     pcall(function()
-        -- Проверяем Backpack
         for _, item in pairs(p.Backpack:GetChildren()) do
             if item:IsA("Tool") and (item.Name:find("Fruit") or item.Name:find("Фрукт")) then
                 CommF:InvokeServer("StoreFruit", item.Name, item)
             end
         end
-        -- Проверяем руки (Character)
         if p.Character then
             for _, item in pairs(p.Character:GetChildren()) do
                 if item:IsA("Tool") and (item.Name:find("Fruit") or item.Name:find("Фрукт")) then
@@ -76,7 +74,7 @@ local function checkGorillaKing()
     return nil
 end
 
--- Поиск мобов
+-- Поиск обычных мобов
 local function getEnemy(mobName, hrp)
     local enemiesFolder = workspace:FindFirstChild("Enemies")
     if not enemiesFolder then return nil end
@@ -106,11 +104,10 @@ local function getJungleQuestData()
     return JungleQuests[1]
 end
 
--- 1. ПОТОК ДЛЯ ВЫБИВАНИЯ И АВТО-СОХРАНЕНИЯ ФРУКТОВ
+-- Поток выбивания фруктов
 task.spawn(function()
     while getgenv().Farm do
-        autoStoreAllFruits() -- Проверяем каждые 2 секунды
-
+        autoStoreAllFruits()
         local currentTime = os.time()
         if currentTime - lastFruitSpin >= 7200 or lastFruitSpin == 0 then
             pcall(function()
@@ -124,7 +121,7 @@ task.spawn(function()
     end
 end)
 
--- 2. ПЛАВНАЯ КАМЕРА
+-- Наведение камеры
 getgenv().FarmConnection = RunService.RenderStepped:Connect(function()
     if not getgenv().Farm then return end
     if currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
@@ -138,10 +135,10 @@ getgenv().FarmConnection = RunService.RenderStepped:Connect(function()
     end
 end)
 
--- 3. ОСНОВНОЙ ЦИКЛ БЕЗОПАСНОГО ФАРМА
+-- ОСНОВНОЙ ЦИКЛ С УМНЫМ БОЕМ И ДИСТАНЦИЕЙ
 task.spawn(function()
     while getgenv().Farm do
-        task.wait(0.05)
+        task.wait(0.04)
         pcall(function()
             local char = p.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -152,23 +149,22 @@ task.spawn(function()
                 return 
             end
 
-            -- 🔥 ЗАЩИТА ОТ СМЕРТИ: Проверка здоровья
+            -- Контроль здоровья
             if hum.Health < hum.MaxHealth * 0.4 then
                 isRecoveringHP = true
             elseif hum.Health >= hum.MaxHealth * 0.85 then
                 isRecoveringHP = false
             end
 
-            -- Если HP мало — ждём регенерации
             if isRecoveringHP then
                 currentTarget = nil
-                hum:MoveTo(hrp.Position) -- Стоим на месте / отдыхаем
+                hum:MoveTo(hrp.Position)
                 return
             end
 
             hum.AutoRotate = true
 
-            -- Экипировка оружия (только боевого, не фруктов)
+            -- Экипировка оружия
             if not char:FindFirstChildOfClass("Tool") then
                 for _, t in pairs(p.Backpack:GetChildren()) do
                     if t:IsA("Tool") and not t.Name:find("Fruit") then
@@ -178,10 +174,8 @@ task.spawn(function()
                 end
             end
 
-            -- Логика выбора цели
+            -- Выбор цели
             local boss = checkGorillaKing()
-
-            -- Не идем на босса, если наш уровень ниже 25 (чтобы не умирать)
             local myLevel = p:FindFirstChild("Data") and p.Data:FindFirstChild("Level") and p.Data.Level.Value or 1
             
             if boss and myLevel >= 25 then
@@ -197,17 +191,25 @@ task.spawn(function()
                 end
             end
 
-            -- Ходьба и урон
+            -- 🔥 УМНАЯ ЛОГИКА ДВИЖЕНИЯ И ЗАХОДА В БОЙ
             if currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
                 local mHrp = currentTarget.HumanoidRootPart
                 local mHum = currentTarget:FindFirstChild("Humanoid")
                 local dist = (hrp.Position - mHrp.Position).Magnitude
 
-                if dist > 5 then
-                    hum:MoveTo(mHrp.Position)
+                -- Расчет точки захода со спины моба (на расстоянии 6 студов)
+                local safeOffset = -mHrp.CFrame.LookVector * 6.5
+                local targetSafePos = mHrp.Position + safeOffset
+
+                -- Подходим к безопасной точке, а не в туловище моба
+                if dist > 7 then
+                    hum:MoveTo(targetSafePos)
+                else
+                    -- Во время близкого боя кружим за спиной
+                    hum:MoveTo(targetSafePos)
                 end
 
-                -- Преодоление препятствий
+                -- Прыжок для обхода препятствий
                 local rayParams = RaycastParams.new()
                 rayParams.FilterDescendantsInstances = {char}
                 rayParams.FilterType = Enum.RaycastFilterType.Exclude
@@ -216,8 +218,8 @@ task.spawn(function()
                     hum.Jump = true
                 end
 
-                -- Удар
-                if dist <= 8 and mHum and mHum.Health > 0 then
+                -- Удар только если находимся на безопасной рабочей дистанции (до 9 студов)
+                if dist <= 9 and mHum and mHum.Health > 0 then
                     VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
                     VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
                 end
