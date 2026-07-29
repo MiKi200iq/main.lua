@@ -1,393 +1,148 @@
--- [[ BLOX FRUITS FARM + AUTO STAT + GUI (DELTA FIX) ]]
-
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local PathfindingService = game:GetService("PathfindingService")
 local RunService = game:GetService("RunService")
-local VirtualInput = game:GetService("VirtualInputManager")
-
 local player = Players.LocalPlayer
 
--- Состояние фарма
-getgenv().Farm = false
+print("🚀 ЗАПУСК АВТО-ФАРМА (УЛЬТРА-ПЛАВНАЯ КАМЕРА RENDERSTEPPED)!")
 
--- Настройки статов (по умолчанию Melee + Defense)
-local statConfig = {
-    Melee = true,
-    Defense = true,
-    Sword = false,
-    Gun = false,
-    Fruit = false
-}
+_G.Farm = true
 
--- ==================== GUI ====================
-local function createGUI()
-    local oldGui = player.PlayerGui:FindFirstChild("FarmGUI")
-    if oldGui then oldGui:Destroy() end
+-- Настройки
+local ATTACK_COOLDOWN = 0.65 -- Задержка атак
+local ATTACK_DISTANCE = 7.5   -- Дистанция атаки
+local CAMERA_SMOOTHNESS = 12 -- Скорость плавности (чем выше, тем отзывчивее, 10-15 идеально)
 
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "FarmGUI"
-    screenGui.ResetOnSpawn = false
-    screenGui.Parent = player.PlayerGui
+local currentTargetPart = nil -- Текущая деталь моба для фокуса камеры
 
-    local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 250, 0, 310)
-    frame.Position = UDim2.new(0, 10, 0, 50)
-    frame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-    frame.BackgroundTransparency = 0.1
-    frame.BorderSizePixel = 0
-    frame.Active = true
-    frame.Draggable = true
-    frame.Parent = screenGui
+-- Поиск детали моба
+local function getMorpPart(model)
+    return model:FindFirstChild("HumanoidRootPart") 
+        or model:FindFirstChild("Torso") 
+        or model:FindFirstChild("UpperTorso") 
+        or model:FindFirstChild("Head") 
+        or model:FindFirstChildOfClass("Part")
+end
 
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = frame
+-- Настройки Pathfinding
+local path = PathfindingService:CreatePath({
+    AgentRadius = 2,
+    AgentHeight = 5,
+    AgentCanJump = true,
+    WaypointSpacing = 4
+})
 
-    -- Заголовок
-    local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(0.8, 0, 0, 30)
-    title.Position = UDim2.new(0, 5, 0, 0)
-    title.BackgroundTransparency = 1
-    title.Text = "⚡ FARM CONTROLLER"
-    title.TextColor3 = Color3.fromRGB(255, 255, 255)
-    title.TextScaled = true
-    title.Font = Enum.Font.GothamBold
-    title.Parent = frame
+-- 🎥 1. ИДЕАЛЬНО ПЛАВНЫЙ ПОВОРОТ КАМЕРЫ (Каждый кадр)
+RunService.RenderStepped:Connect(function(deltaTime)
+    if _G.Farm and currentTargetPart and currentTargetPart.Parent then
+        local cam = workspace.CurrentCamera
+        local camPos = cam.CFrame.Position
+        local targetPos = currentTargetPart.Position + Vector3.new(0, 1.5, 0)
 
-    -- Кнопка закрытия
-    local closeBtn = Instance.new("TextButton")
-    closeBtn.Size = UDim2.new(0, 25, 0, 25)
-    closeBtn.Position = UDim2.new(1, -28, 0, 3)
-    closeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-    closeBtn.Text = "✕"
-    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    closeBtn.TextScaled = true
-    closeBtn.Font = Enum.Font.GothamBold
-    closeBtn.Parent = frame
+        -- Вычисляем идеальный угол
+        local desiredCFrame = CFrame.lookAt(camPos, targetPos)
 
-    local closeCorner = Instance.new("UICorner")
-    closeCorner.CornerRadius = UDim.new(0, 4)
-    closeCorner.Parent = closeBtn
+        -- Плавная интерполяция, независимая от FPS
+        local alpha = math.clamp(deltaTime * CAMERA_SMOOTHNESS, 0, 1)
+        cam.CFrame = cam.CFrame:Lerp(desiredCFrame, alpha)
+    end
+end)
 
-    closeBtn.MouseButton1Click:Connect(function()
-        getgenv().Farm = false
+-- 🏃‍♂️ 2. ЛОГИКА ДВИЖЕНИЯ И АТАКИ
+task.spawn(function()
+    local lastAttack = 0
+
+    while _G.Farm do
+        task.wait(0.05)
+
         local char = player.Character
         local hum = char and char:FindFirstChildOfClass("Humanoid")
-        if hum then hum.AutoRotate = true end
-        screenGui:Destroy()
-    end)
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
 
-    -- Кнопка включения
-    local toggleBtn = Instance.new("TextButton")
-    toggleBtn.Size = UDim2.new(0.8, 0, 0, 35)
-    toggleBtn.Position = UDim2.new(0.1, 0, 0, 40)
-    toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 100)
-    toggleBtn.Text = "▶ START FARM"
-    toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    toggleBtn.TextScaled = true
-    toggleBtn.Font = Enum.Font.GothamBold
-    toggleBtn.Parent = frame
+        if char and hum and hrp and hum.Health > 0 then
 
-    local cornerBtn = Instance.new("UICorner")
-    cornerBtn.CornerRadius = UDim.new(0, 4)
-    cornerBtn.Parent = toggleBtn
+            -- Подготовка папки Enemies
+            local enemiesFolder = workspace:FindFirstChild("Enemies")
+            if not enemiesFolder then
+                enemiesFolder = Instance.new("Folder")
+                enemiesFolder.Name = "Enemies"
+                enemiesFolder.Parent = workspace
+            end
 
-    -- Статус
-    local statusLabel = Instance.new("TextLabel")
-    statusLabel.Size = UDim2.new(1, 0, 0, 20)
-    statusLabel.Position = UDim2.new(0, 0, 0, 80)
-    statusLabel.BackgroundTransparency = 1
-    statusLabel.Text = "Status: OFF"
-    statusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    statusLabel.TextScaled = true
-    statusLabel.Font = Enum.Font.Gotham
-    statusLabel.Parent = frame
+            -- Поиск мобов
+            for _, obj in pairs(workspace:GetChildren()) do
+                if obj:FindFirstChild("Humanoid") and obj ~= char and obj.Name ~= "Terrain" then
+                    if not obj:IsDescendantOf(enemiesFolder) then
+                        obj.Parent = enemiesFolder
+                    end
+                end
+            end
 
-    -- Чекбоксы статов
-    local function createCheckbox(parent, yPos, text, default)
-        local container = Instance.new("Frame")
-        container.Size = UDim2.new(0.9, 0, 0, 22)
-        container.Position = UDim2.new(0.05, 0, 0, yPos)
-        container.BackgroundTransparency = 1
-        container.Parent = parent
+            -- Поиск ближайшего моба
+            local target = nil
+            local targetPart = nil
+            local minDist = math.huge
 
-        local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(0.7, 0, 1, 0)
-        label.BackgroundTransparency = 1
-        label.Text = text
-        label.TextColor3 = Color3.fromRGB(220, 220, 220)
-        label.TextXAlignment = Enum.TextXAlignment.Left
-        label.TextScaled = true
-        label.Font = Enum.Font.Gotham
-        label.Parent = container
+            for _, m in pairs(enemiesFolder:GetChildren()) do
+                local mHum = m:FindFirstChildOfClass("Humanoid")
+                local mainPart = getMorpPart(m)
 
-        local check = Instance.new("ImageButton")
-        check.Size = UDim2.new(0, 18, 0, 18)
-        check.Position = UDim2.new(0.8, 0, 0.1, 0)
-        check.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
-        check.BorderSizePixel = 0
-        check.Image = (default and "rbxassetid://7355369040") or ""
-        check.ImageColor3 = Color3.fromRGB(0, 200, 100)
-        check.ScaleType = Enum.ScaleType.Fit
-        check.Parent = container
+                if mHum and mainPart and mHum.Health > 0 then
+                    local dist = (hrp.Position - mainPart.Position).Magnitude
+                    if dist < minDist then
+                        minDist = dist
+                        target = m
+                        targetPart = mainPart
+                    end
+                end
+            end
 
-        local checkCorner = Instance.new("UICorner")
-        checkCorner.CornerRadius = UDim.new(0, 3)
-        checkCorner.Parent = check
+            -- Передаем цель в камеру
+            currentTargetPart = targetPart
 
-        local state = default or false
-        check.MouseButton1Click:Connect(function()
-            state = not state
-            check.Image = state and "rbxassetid://7355369040" or ""
-        end)
+            -- Движение и Атака
+            if target and targetPart then
+                local targetHum = target:FindFirstChildOfClass("Humanoid")
 
-        return container, function() return state end
-    end
+                -- Обход препятствий
+                if minDist > 5 then
+                    local success = pcall(function()
+                        path:ComputeAsync(hrp.Position, targetPart.Position)
+                    end)
 
-    local checkboxes = {}
-    local yOffset = 105
-    local statNames = {"Melee", "Defense", "Sword", "Gun", "Fruit"}
-    local defaultStates = {true, true, false, false, false}
+                    if success and path.Status == Enum.PathStatus.Success then
+                        local waypoints = path:GetWaypoints()
+                        if #waypoints > 1 then
+                            local nextPoint = waypoints[2]
+                            if nextPoint.Action == Enum.PathWaypointAction.Jump then
+                                hum.Jump = true
+                            end
+                            hum:MoveTo(nextPoint.Position)
+                        else
+                            hum:MoveTo(targetPart.Position)
+                        end
+                    else
+                        hum:MoveTo(targetPart.Position)
+                    end
+                else
+                    hum:MoveTo(hrp.Position)
+                end
 
-    for i, name in ipairs(statNames) do
-        local _, getState = createCheckbox(frame, yOffset, name, defaultStates[i])
-        checkboxes[name] = getState
-        yOffset = yOffset + 25
-    end
+                -- Контролируемая атака
+                if minDist <= ATTACK_DISTANCE and (tick() - lastAttack) >= ATTACK_COOLDOWN then
+                    local tool = char:FindFirstChildOfClass("Tool") or player.Backpack:FindFirstChildOfClass("Tool")
+                    if tool and tool.Parent == player.Backpack then
+                        hum:EquipTool(tool)
+                    end
 
-    -- Кнопка "Применить"
-    local applyBtn = Instance.new("TextButton")
-    applyBtn.Size = UDim2.new(0.8, 0, 0, 25)
-    applyBtn.Position = UDim2.new(0.1, 0, 0, yOffset + 5)
-    applyBtn.BackgroundColor3 = Color3.fromRGB(60, 100, 200)
-    applyBtn.Text = "✅ Применить"
-    applyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    applyBtn.TextScaled = true
-    applyBtn.Font = Enum.Font.GothamBold
-    applyBtn.Parent = frame
+                    if tool then 
+                        tool:Activate() 
+                    end
 
-    local cornerApply = Instance.new("UICorner")
-    cornerApply.CornerRadius = UDim.new(0, 4)
-    cornerApply.Parent = applyBtn
-
-    -- Информация
-    local infoLabel = Instance.new("TextLabel")
-    infoLabel.Size = UDim2.new(1, 0, 0, 20)
-    infoLabel.Position = UDim2.new(0, 0, 0, yOffset + 35)
-    infoLabel.BackgroundTransparency = 1
-    infoLabel.Text = "Уровень: -- | Очки: --"
-    infoLabel.TextColor3 = Color3.fromRGB(150, 150, 170)
-    infoLabel.TextScaled = true
-    infoLabel.Font = Enum.Font.Gotham
-    infoLabel.Parent = frame
-
-    local function updateInfo()
-        if player:FindFirstChild("Data") and player.Data:FindFirstChild("Level") then
-            local level = player.Data.Level.Value or 0
-            local points = (player.Data:FindFirstChild("Points") and player.Data.Points.Value) or 0
-            infoLabel.Text = "Уровень: " .. level .. " | Очки: " .. points
-        end
-    end
-
-    RunService.Heartbeat:Connect(updateInfo)
-
-    return {
-        ToggleButton = toggleBtn,
-        StatusLabel = statusLabel,
-        Checkboxes = checkboxes,
-        ApplyButton = applyBtn,
-        UpdateInfo = updateInfo
-    }
-end
-
-local gui = createGUI()
-
--- Обновление конфига из GUI
-local function updateConfigFromGUI()
-    for name, getState in pairs(gui.Checkboxes) do
-        statConfig[name] = getState()
-    end
-end
-
-gui.ApplyButton.MouseButton1Click:Connect(updateConfigFromGUI)
-updateConfigFromGUI()
-
--- ==================== АВТОПРОКАЧКА ====================
-local function autoStat()
-    if not player:FindFirstChild("Data") then return end
-
-    local points = player.Data:FindFirstChild("Points")
-    if not points or points.Value <= 0 then return end
-    local available = points.Value
-
-    local statsToUp = {}
-    if statConfig.Melee   then table.insert(statsToUp, "Melee") end
-    if statConfig.Defense then table.insert(statsToUp, "Defense") end
-    if statConfig.Sword   then table.insert(statsToUp, "Sword") end
-    if statConfig.Gun     then table.insert(statsToUp, "Gun") end
-    if statConfig.Fruit   then table.insert(statsToUp, "Blox Fruit") end
-
-    if #statsToUp == 0 then return end
-
-    local remote = ReplicatedStorage:FindFirstChild("Remotes")
-    local commF = remote and remote:FindFirstChild("CommF_")
-    if not commF then return end
-
-    local idx = 1
-    while available > 0 and getgenv().Farm do
-        local statName = statsToUp[idx]
-        if statName and player.Data:FindFirstChild(statName) then
-            commF:InvokeServer("AddPoint", statName)
-            available = available - 1
-        end
-        idx = idx + 1
-        if idx > #statsToUp then idx = 1 end
-        wait(0.05)
-    end
-    gui.UpdateInfo()
-end
-
--- ==================== УПРАВЛЕНИЕ ВКЛ/ВЫКЛ ====================
-gui.ToggleButton.MouseButton1Click:Connect(function()
-    getgenv().Farm = not getgenv().Farm
-    
-    local char = player.Character
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-
-    if getgenv().Farm then
-        gui.ToggleButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-        gui.ToggleButton.Text = "⏹ STOP FARM"
-        gui.StatusLabel.Text = "Status: ON"
-        gui.StatusLabel.TextColor3 = Color3.fromRGB(0, 255, 100)
-    else
-        gui.ToggleButton.BackgroundColor3 = Color3.fromRGB(0, 200, 100)
-        gui.ToggleButton.Text = "▶ START FARM"
-        gui.StatusLabel.Text = "Status: OFF"
-        gui.StatusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-
-        if hum and char then
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                hum:MoveTo(hrp.Position)
-                hum.AutoRotate = true
+                    lastAttack = tick()
+                end
+            else
+                currentTargetPart = nil
             end
         end
     end
 end)
-
--- ==================== ФУНКЦИЯ АТАКИ (без VirtualInput, через tool) ====================
-local function attack()
-    local char = player.Character
-    if not char then return end
-    
-    local tool = char:FindFirstChildOfClass("Tool")
-    if tool then
-        tool:Activate()  -- основной метод для Blox Fruits
-    end
-
-    -- Дополнительно пробуем клик (на случай, если Activate не сработает)
-    pcall(function()
-        VirtualInput:SendMouseButtonEvent(0, 0, 0, true, game, 1)
-        wait(0.01)
-        VirtualInput:SendMouseButtonEvent(0, 0, 0, false, game, 1)
-    end)
-end
-
--- ==================== ОСНОВНОЙ ЦИКЛ (без continue) ====================
-spawn(function()
-    local cam = workspace.CurrentCamera
-    local camSpeed = 0.08
-    local lastAttackTime = 0
-    local attackCooldown = 0.2
-    local lastLevel = 0
-
-    if player:FindFirstChild("Data") and player.Data:FindFirstChild("Level") then
-        lastLevel = player.Data.Level.Value
-    end
-
-    while true do
-        wait(0.05)
-        
-        -- Если фарм выключен, пропускаем итерацию
-        if not getgenv().Farm then
-            -- Можно добавить небольшую задержку, чтобы не грузить процессор
-            wait(0.1)
-            continue  -- <-- ЭТО ОШИБКА! В Lua нет continue.
-        end
-
-        -- Исправлено: убираем continue, используем if-end
-        if getgenv().Farm then
-            pcall(function()
-                local char = player.Character
-                local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                local hum = char and char:FindFirstChildOfClass("Humanoid")
-                if not hrp or not hum or hum.Health <= 0 then return end
-
-                -- Экипировка оружия
-                if not char:FindFirstChildOfClass("Tool") then
-                    for _, t in pairs(player.Backpack:GetChildren()) do
-                        if t:IsA("Tool") then
-                            hum:EquipTool(t)
-                            break
-                        end
-                    end
-                end
-
-                -- Поиск ближайшего моба
-                local target, minDist = nil, math.huge
-                for _, m in pairs(workspace.Enemies:GetChildren()) do
-                    local mHum = m:FindFirstChild("Humanoid")
-                    local mHrp = m:FindFirstChild("HumanoidRootPart")
-                    if mHum and mHrp and mHum.Health > 0 then
-                        local d = (hrp.Position - mHrp.Position).Magnitude
-                        if d < minDist then
-                            minDist = d
-                            target = m
-                        end
-                    end
-                end
-
-                if target then
-                    local mPos = target.HumanoidRootPart.Position
-                    local hrpPos = hrp.Position
-
-                    -- Плавная камера
-                    local targetCamFocus = mPos + Vector3.new(0, 2.5, 0)
-                    cam.CFrame = cam.CFrame:Lerp(CFrame.new(cam.CFrame.Position, targetCamFocus), camSpeed)
-
-                    -- Движение к цели
-                    if minDist > 4 then
-                        hum:MoveTo(mPos)
-                        -- Обход препятствий
-                        local wall = workspace:Raycast(hrpPos, hrp.CFrame.LookVector * 4)
-                        if wall then
-                            hum.Jump = true
-                        end
-                    else
-                        hum:MoveTo(hrpPos)  -- стоим на месте
-                    end
-
-                    -- Атака
-                    if minDist <= 8 and tick() - lastAttackTime >= attackCooldown then
-                        attack()
-                        lastAttackTime = tick()
-                    end
-                else
-                    -- Нет целей – стоим
-                    hum:MoveTo(hrp.Position)
-                end
-
-                -- Автопрокачка
-                if player:FindFirstChild("Data") and player.Data:FindFirstChild("Level") then
-                    local currentLevel = player.Data.Level.Value
-                    if currentLevel > lastLevel or (player.Data:FindFirstChild("Points") and player.Data.Points.Value > 0) then
-                        lastLevel = currentLevel
-                        autoStat()
-                    end
-                end
-            end)
-        end
-    end
-end)
-
-print("✅ Скрипт загружен. Используйте GUI для управления.")
