@@ -292,7 +292,7 @@ end)
 
 -- Наведение камеры
 getgenv().FarmConnection = RunService.RenderStepped:Connect(function()
-    if not getgenv().Farm me Target then return end
+    if not getgenv().Farm then return end
     if currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
         local mHum = currentTarget:FindFirstChild("Humanoid")
         if not mHum or mHum.Health <= 0 then
