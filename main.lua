@@ -12,6 +12,8 @@ local CommF = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_")
 local currentTarget = nil
 local lastFruitSpin = 0
 local lastDashTime = 0
+local lastZTime = 0
+local lastXTime = 0
 
 -- Координаты точек спавна мобов в Джунглях
 local Waypoints = {
@@ -27,6 +29,34 @@ local JungleQuests = {
 if getgenv().FarmConnection then
     getgenv().FarmConnection:Disconnect()
     getgenv().FarmConnection = nil
+end
+
+-- НАДЕЖНОЕ НАЖАТИЕ КЛАВИШ (ДЛЯ DELTA И EXECUTOR-ОВ)
+local function pressKey(keyCode, charCode)
+    pcall(function()
+        -- Метод 1: Через VirtualInputManager
+        VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
+        
+        -- Метод 2: Нативная функция исполнителя (если поддерживается)
+        if keypress then keypress(charCode) end
+        
+        task.wait(0.1) -- Держим кнопку 0.1 секунды, чтобы Blox Fruits успел зафиксировать
+        
+        VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
+        if keyrelease then keyrelease(charCode) end
+    end)
+end
+
+-- 🔥 АВТО-ПРОКАЧКА СТАТОВ (Распределяет очки в Меч и Защиту)
+local function autoAddStats()
+    pcall(function()
+        local points = p.Data.Points.Value
+        if points and points > 0 then
+            -- Вкладываем очки в Sword (Меч) и Defense (Защиту)
+            CommF:InvokeServer("AddPoint", "Sword", 1)
+            CommF:InvokeServer("AddPoint", "Defense", 1)
+        end
+    end)
 end
 
 -- Авто-сохранение фруктов в инвентарь
@@ -45,13 +75,6 @@ local function autoStoreAllFruits()
             end
         end
     end)
-end
-
--- Функция нажатия клавиш для скиллов и рывка
-local function pressKey(keyCode)
-    VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
-    task.wait(0.02)
-    VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
 end
 
 -- Взятие квеста
@@ -96,10 +119,12 @@ local function getJungleQuestData()
     return JungleQuests[1]
 end
 
--- Фоновый поток для кручения и сохранения фруктов
+-- Фоновый поток для фруктов и авто-статов
 task.spawn(function()
     while getgenv().Farm do
         autoStoreAllFruits()
+        autoAddStats() -- Прокачка характеристик
+        
         local currentTime = os.time()
         if currentTime - lastFruitSpin >= 7200 or lastFruitSpin == 0 then
             pcall(function()
@@ -127,7 +152,7 @@ getgenv().FarmConnection = RunService.RenderStepped:Connect(function()
     end
 end)
 
--- ОСНОВНОЙ ЦИКЛ (Фарм + Скиллы + Q-Рывок + Прыжки + Всплытие)
+-- ОСНОВНОЙ ЦИКЛ БОЯ И ДВИЖЕНИЯ
 task.spawn(function()
     while getgenv().Farm do
         task.wait(0.04)
@@ -143,7 +168,7 @@ task.spawn(function()
 
             hum.AutoRotate = true
 
-            -- Экипировка оружия (Катаны или Стиля боя)
+            -- Экипировка оружия (Катана / Sword)
             if not char:FindFirstChildOfClass("Tool") then
                 for _, t in pairs(p.Backpack:GetChildren()) do
                     if t:IsA("Tool") and not t.Name:find("Fruit") then
@@ -158,12 +183,12 @@ task.spawn(function()
             takeQuest(qData.Name, qData.Level)
             currentTarget = getEnemy(qData.Mob, hrp)
 
-            -- Если моб далеко — бежим в точку спавна
+            -- Бег в точку спавна, если нет мобов рядом
             if not currentTarget and Waypoints[qData.Mob] then
                 hum:MoveTo(Waypoints[qData.Mob])
             end
 
-            -- Логика движения, атаки и использования скиллов
+            -- Боевая логика
             if currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
                 local mHrp = currentTarget.HumanoidRootPart
                 local mHum = currentTarget:FindFirstChild("Humanoid")
@@ -173,30 +198,35 @@ task.spawn(function()
                     hum:MoveTo(mHrp.Position)
                 end
 
-                -- 🔥 ИСПОЛЬЗОВАНИЕ РЫВКА (Q) ДЛЯ СБЛИЖЕНИЯ
+                local now = tick()
+
+                -- 1. РЫВОК НА Q (при сближении на расстоянии 10-35 студов)
                 if dist > 10 and dist < 35 then
-                    local now = tick()
-                    if now - lastDashTime >= 1.5 then -- Кулдаун 1.5 секунды
+                    if now - lastDashTime >= 2.0 then
                         lastDashTime = now
-                        pressKey(Enum.KeyCode.Q)
+                        pressKey(Enum.KeyCode.Q, 0x51)
                     end
                 end
 
-                -- 🔥 АТАКА (ЛКМ) И СКИЛЛЫ (Z, X)
-                if dist <= 12 and mHum and mHum.Health > 0 then
-                    -- Обычный удар ЛКМ
-                    VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
-                    VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
-
-                    -- Использование скилла Z
-                    pressKey(Enum.KeyCode.Z)
-                    
-                    -- Использование скилла X
-                    pressKey(Enum.KeyCode.X)
+                -- 2. АТАКА И СКИЛЛЫ
+                if dist <= 10 and mHum and mHum.Health > 0 then
+                    -- Скилл Z (Тихий порыв) — кулдаун 3.5 сек
+                    if now - lastZTime >= 3.5 then
+                        lastZTime = now
+                        pressKey(Enum.KeyCode.Z, 0x5A)
+                    -- Скилл X (Воздушный удар) — кулдаун 5.5 сек
+                    elseif now - lastXTime >= 5.5 then
+                        lastXTime = now
+                        pressKey(Enum.KeyCode.X, 0x58)
+                    else
+                        -- Обычный удар ЛКМ
+                        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+                        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+                    end
                 end
             end
 
-            -- ЛОГИКА ПЛАВАНИЯ И ПРЕОДОЛЕНИЯ ПРЕПЯТСТВИЙ
+            -- ПЛАВАНИЕ И ПРЕДОТВРАЩЕНИЕ ЗАТРЕВАНИЙ
             local state = hum:GetState()
             if state == Enum.HumanoidStateType.Swimming then
                 hum.Jump = true
