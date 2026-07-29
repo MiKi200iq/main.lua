@@ -34,7 +34,7 @@ if getgenv().Farm then
 
         -- Плавное слежение камеры за мобом
         local targetFocus = mPos + Vector3.new(0, 2.5, 0)
-        cam.CFrame = cam.CFrame:Lerp(CFrame.lookAt(cam.CFrame.Position, targetFocus), 0.15)
+        cam.CFrame = cam.CFrame:Lerp(CFrame.lookAt(cam.CFrame.Position, targetFocus), 0.25)
     end)
 
     -- 2. ОСНОВНАЯ ЛОГИКА (Поиск, ходьба, атака)
