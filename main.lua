@@ -19,18 +19,28 @@ local isRecoveringHP = false
 local lastHrpPos = Vector3.new(0, 0, 0)
 local stuckTimer = 0
 
--- Координаты точек спавна мобов (Включая арену Короля Горилл)
+-- ТОЧКИ СПАВНА МОБОВ (Джунгли + Остров Пиратов)
 local Waypoints = {
+    -- Джунгли (10-29 lvl)
     ["Monkey"] = Vector3.new(-1600, 36, 150),
     ["Gorilla"] = Vector3.new(-1240, 6, -490),
     ["Gorilla King"] = Vector3.new(-1130, 15, -490),
+    -- Остров Пиратов (30-60 lvl)
+    ["Pirate"] = Vector3.new(-1115, 14, 3850),
+    ["Brute"] = Vector3.new(-1145, 15, 4350),
+    ["Bobby"] = Vector3.new(-1130, 14, 4080),
 }
 
--- Квесты Джунглей: 10-14 (Обезьяны), 15-19 (Гориллы), 20+ (Король Горилл)
-local JungleQuests = {
+-- СПИСОК КВЕСТОВ (Авто-выбор по уровню)
+local QuestList = {
+    -- Джунгли
     {Min = 10, Max = 14, Name = "JungleQuest", Level = 1, Mob = "Monkey"},
     {Min = 15, Max = 19, Name = "JungleQuest", Level = 2, Mob = "Gorilla"},
-    {Min = 20, Max = 99, Name = "JungleQuest", Level = 3, Mob = "Gorilla King"},
+    {Min = 20, Max = 29, Name = "JungleQuest", Level = 3, Mob = "Gorilla King"},
+    -- Остров Пиратов
+    {Min = 30, Max = 39, Name = "BuggyQuest1", Level = 1, Mob = "Pirate"},
+    {Min = 40, Max = 54, Name = "BuggyQuest1", Level = 2, Mob = "Brute"},
+    {Min = 55, Max = 59, Name = "BuggyQuest1", Level = 3, Mob = "Bobby"},
 }
 
 if getgenv().FarmConnection then
@@ -107,7 +117,7 @@ local function takeQuest(questName, questLevel)
     end)
 end
 
--- УМНЫЙ ПОИСК ЦЕЛИ (Поддерживает обычных мобов и Босса)
+-- УМНЫЙ ПОИСК ЦЕЛИ
 local function getEnemy(mobName, hrp)
     local enemiesFolder = workspace:FindFirstChild("Enemies")
     if not enemiesFolder then return nil end
@@ -116,9 +126,8 @@ local function getEnemy(mobName, hrp)
     for _, m in pairs(enemiesFolder:GetChildren()) do
         if m.Name:find(mobName) then
             local isKing = m.Name:find("King")
-            -- Если фармим обычных горилл — пропускаем Короля. Если квест на Короля — берем именно его!
             if mobName == "Gorilla" and isKing then
-                -- пропускаем
+                -- пропускаем босса, если квест на обычных горилл
             else
                 local mHum = m:FindFirstChild("Humanoid")
                 local mHrp = m:FindFirstChild("HumanoidRootPart")
@@ -135,14 +144,15 @@ local function getEnemy(mobName, hrp)
     return target
 end
 
-local function getJungleQuestData()
+-- ПОЛУЧЕНИЕ ДАННЫХ КВЕСТА ПО УРОВНЮ
+local function getCurrentQuestData()
     local myLevel = p:FindFirstChild("Data") and p.Data:FindFirstChild("Level") and p.Data.Level.Value or 10
-    for _, q in ipairs(JungleQuests) do
+    for _, q in ipairs(QuestList) do
         if myLevel >= q.Min and myLevel <= q.Max then
             return q
         end
     end
-    return JungleQuests[1]
+    return QuestList[1]
 end
 
 -- Фоновый поток для фруктов и статов
@@ -178,7 +188,7 @@ getgenv().FarmConnection = RunService.RenderStepped:Connect(function()
     end
 end)
 
--- ОСНОВНОЙ ЦИКЛ БОЯ
+-- ОСНОВНОЙ ЦИКЛ ФАРМА
 task.spawn(function()
     while getgenv().Farm do
         task.wait(0.04)
@@ -203,7 +213,7 @@ task.spawn(function()
 
             if isRecoveringHP then
                 currentTarget = nil
-                local qData = getJungleQuestData()
+                local qData = getCurrentQuestData()
                 local enemy = getEnemy(qData.Mob, hrp)
                 
                 if enemy and enemy:FindFirstChild("HumanoidRootPart") then
@@ -245,11 +255,11 @@ task.spawn(function()
             end
 
             -- Квест и поиск цели
-            local qData = getJungleQuestData()
+            local qData = getCurrentQuestData()
             takeQuest(qData.Name, qData.Level)
             currentTarget = getEnemy(qData.Mob, hrp)
 
-            -- Если босс еще не заспавнился — бежим на спавн арену и ждем
+            -- Если моб не найден — идем на точку спавна
             if not currentTarget and Waypoints[qData.Mob] then
                 hum:MoveTo(Waypoints[qData.Mob])
             end
