@@ -212,7 +212,7 @@ task.spawn(function()
 
                 local now = tick()
 
-                -- 1. Рывок на Q (при приближении от 10 до 35 студов)
+                -- 1. Рывок на Q (при приближении от 10 до 35 студов) — ИСПРАВЛЕННАЯ СТРОКА
                 if dist > 10 and dist < 35 then
                     if now - lastDashTime >= 0.8 then
                         lastDashTime = now
