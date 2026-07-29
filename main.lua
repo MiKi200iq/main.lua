@@ -228,7 +228,7 @@ end)
 updateUI()
 
 ---------------------------------------------------------
--- ОСНОВНАЯ ЛОГИКА ФАРМА
+-- ОСНОВНАЯ ЛОГИКА ФАРМА И ЗАЩИТЫ ОТ ВОДЫ
 ---------------------------------------------------------
 if getgenv().FarmConnection then
     getgenv().FarmConnection:Disconnect()
@@ -259,6 +259,36 @@ local function doubleJump()
             end
         end)
     end)
+end
+
+-- Функция проверки суши: исключает побег в воду или в воздух над водой
+local function getSafeFleePos(hrpPos, enemyPos)
+    local baseDir = (hrpPos - enemyPos).Unit
+    local angles = {0, 45, -45, 90, -90, 135, -135, 180}
+
+    for _, angle in ipairs(angles) do
+        local rad = math.rad(angle)
+        local cosA = math.cos(rad)
+        local sinA = math.sin(rad)
+
+        local dirX = baseDir.X * cosA - baseDir.Z * sinA
+        local dirZ = baseDir.X * sinA + baseDir.Z * cosA
+
+        local testPos = hrpPos + Vector3.new(dirX * 40, 0, dirZ * 40)
+
+        local rayParams = RaycastParams.new()
+        rayParams.FilterDescendantsInstances = {p.Character}
+        rayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+        -- Проверяем пол под целевой точкой
+        local rayResult = workspace:Raycast(testPos + Vector3.new(0, 30, 0), Vector3.new(0, -60, 0), rayParams)
+
+        if rayResult and rayResult.Material ~= Enum.Material.Water then
+            return rayResult.Position + Vector3.new(0, 2.5, 0) -- Безопасная суша
+        end
+    end
+
+    return nil -- Если кругом вода, возвращаем nil
 end
 
 local function isMobAlive(mobName)
@@ -395,7 +425,7 @@ local function getEnemy(mobName, hrp)
             local dist = (hrp.Position - mHrp.Position).Magnitude
             if m.Name:find(mobName) then
                 if (mobName == "Gorilla" and m.Name:find("King")) or (mobName == "Pirate" and m.Name:find("Brute")) then
-                    -- пропуск других видов мобов
+                    -- пропуск других типов мобов
                 elseif dist < minDist then
                     minDist = dist
                     target = m
@@ -406,7 +436,7 @@ local function getEnemy(mobName, hrp)
     return target
 end
 
--- Поток рулетки и статов
+-- Вспомогательный поток (рулетка и статы)
 task.spawn(function()
     while true do
         if getgenv().Farm then
@@ -427,7 +457,7 @@ task.spawn(function()
     end
 end)
 
--- Камера
+-- Наведение камеры
 getgenv().FarmConnection = RunService.RenderStepped:Connect(function()
     if not getgenv().Farm then return end
     if currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
@@ -458,19 +488,18 @@ task.spawn(function()
 
                 hum.AutoRotate = true
 
-                -- Проверка уровня здоровья (пороги 35% и 85%)
                 if hum.Health < hum.MaxHealth * 0.35 then
                     isRecoveringHP = true
                 elseif hum.Health >= hum.MaxHealth * 0.85 then
                     isRecoveringHP = false
                 end
 
-                -- НОВАЯ ЛОГИКА ОТСТУПЛЕНИЯ В РАДИУСЕ 100 СТУДОВ
+                -- ЛОГИКА БЕЗОПАСНОГО ОТСТУПЛЕНИЯ
                 if isRecoveringHP then
                     currentTarget = nil
                     
                     local nearestEnemy = nil
-                    local minDist = 100 -- Ищем врагов строго в радиусе 100 студов
+                    local minDist = 100
                     local enemiesFolder = workspace:FindFirstChild("Enemies")
 
                     if enemiesFolder then
@@ -487,14 +516,18 @@ task.spawn(function()
                         end
                     end
 
-                    -- Убегаем только если враг реален и ближе 100 студов
                     if nearestEnemy and nearestEnemy:FindFirstChild("HumanoidRootPart") then
-                        local eHrp = nearestEnemy.HumanoidRootPart
-                        local fleeDir = (hrp.Position - eHrp.Position).Unit
-                        local fleePos = hrp.Position + Vector3.new(fleeDir.X * 45, 0, fleeDir.Z * 45)
-                        hum:MoveTo(fleePos)
+                        local safePos = getSafeFleePos(hrp.Position, nearestEnemy.HumanoidRootPart.Position)
+                        if safePos then
+                            hum:MoveTo(safePos)
+                        else
+                            -- Если пути отступления ведут к воде, отойдем к центру острова
+                            local currentWaypoints = IslandsData[getgenv().SelectedIsland].Waypoints
+                            local activeData = getTargetQuestData()
+                            local fallbackWp = currentWaypoints[activeData.Mob] or hrp.Position
+                            hum:MoveTo(fallbackWp)
+                        end
                     else
-                        -- Врагов рядом нет -> остаемся на месте и спокойно восстанавливаем HP
                         hum:MoveTo(hrp.Position)
                     end
                     return
