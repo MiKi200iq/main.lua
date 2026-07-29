@@ -1,5 +1,4 @@
 getgenv().Farm = true
--- 🔥 ВЫБОР ОСТРОВА: "Jungle", "Pirate Village", "Desert" или "Auto"
 getgenv().SelectedIsland = "Jungle"
 
 local Players = game:GetService("Players")
@@ -24,7 +23,7 @@ local lastVTime = 0
 local lastHrpPos = Vector3.new(0, 0, 0)
 local stuckTimer = 0
 
--- ЕДИНАЯ СИСТЕМА ОСТРОВОВ
+-- БЕЗОПАСНАЯ СИСТЕМА КВЕСТОВ ДЖУНГЛЕЙ
 local Islands = {
     ["Jungle"] = {
         Pos = Vector3.new(-1240, 6, -490),
@@ -33,21 +32,6 @@ local Islands = {
             {Req = 15, Name = "JungleQuest", Level = 2, Mob = "Gorilla", FallbackMob = "Monkey"},
             {Req = 10, Name = "JungleQuest", Level = 1, Mob = "Monkey", FallbackMob = "Monkey"},
         }
-    },
-    ["Pirate Village"] = {
-        Pos = Vector3.new(-1115, 14, 3850),
-        Quests = {
-            {Req = 55, Name = "BuggyQuest1", Level = 3, Mob = "Bobby", FallbackMob = "Brute"},
-            {Req = 40, Name = "BuggyQuest1", Level = 2, Mob = "Brute", FallbackMob = "Pirate"},
-            {Req = 30, Name = "BuggyQuest1", Level = 1, Mob = "Pirate", FallbackMob = "Pirate"},
-        }
-    },
-    ["Desert"] = {
-        Pos = Vector3.new(895, 7, 4370),
-        Quests = {
-            {Req = 75, Name = "DesertQuest", Level = 2, Mob = "Desert Officer", FallbackMob = "Desert Bandit"},
-            {Req = 60, Name = "DesertQuest", Level = 1, Mob = "Desert Bandit", FallbackMob = "Desert Bandit"},
-        }
     }
 }
 
@@ -55,11 +39,6 @@ local Waypoints = {
     ["Monkey"] = Vector3.new(-1600, 36, 150),
     ["Gorilla"] = Vector3.new(-1240, 6, -490),
     ["Gorilla King"] = Vector3.new(-1130, 15, -490),
-    ["Pirate"] = Vector3.new(-1115, 14, 3850),
-    ["Brute"] = Vector3.new(-1145, 15, 4350),
-    ["Bobby"] = Vector3.new(-1130, 14, 4080),
-    ["Desert Bandit"] = Vector3.new(895, 7, 4370),
-    ["Desert Officer"] = Vector3.new(950, 7, 4450),
 }
 
 if getgenv().FarmConnection then
@@ -93,6 +72,7 @@ local function doubleJump()
     end)
 end
 
+-- Авто-прокачка Demon Fruit + Defense
 local function autoAddStats()
     pcall(function()
         local points = p.Data.Points.Value
@@ -103,6 +83,7 @@ local function autoAddStats()
     end)
 end
 
+-- Безопасная убиралка фруктов на склад
 local function autoStoreAllFruits()
     pcall(function()
         for _, item in pairs(p.Backpack:GetChildren()) do
@@ -156,32 +137,10 @@ local function equipLight(char, hum)
     return false
 end
 
--- 🔥 ИСПРАВЛЕННЫЙ СБРОС КВЕСТА (без :lower() и безопасный)
+-- Безопасный отмена квеста через сервер
 local function abandonQuest()
     pcall(function()
         CommF:InvokeServer("AbandonQuest")
-        local questGui = p:FindFirstChild("PlayerGui") and p.PlayerGui:FindFirstChild("Main") and p.PlayerGui.Main:FindFirstChild("Quest")
-        if questGui then
-            for _, v in pairs(questGui:GetDescendants()) do
-                if v:IsA("TextButton") then
-                    local name = v.Name and string.lower(v.Name) or ""
-                    local text = v.Text and string.lower(v.Text) or ""
-                    if name:find("cancel") or name:find("abandon") or text:find("отмена") then
-                        -- Безопасный вызов события
-                        pcall(function()
-                            v:Activate()
-                        end)
-                        pcall(function()
-                            if getconnections then
-                                for _, conn in pairs(getconnections(v.MouseButton1Click)) do
-                                    conn:Fire()
-                                end
-                            end
-                        end)
-                    end
-                end
-            end
-        end
     end)
 end
 
@@ -204,11 +163,6 @@ local function getActiveQuestMob()
                     if txt:find("Gorilla King") then return "Gorilla King" end
                     if txt:find("Gorilla") then return "Gorilla" end
                     if txt:find("Monkey") then return "Monkey" end
-                    if txt:find("Pirate") then return "Pirate" end
-                    if txt:find("Brute") then return "Brute" end
-                    if txt:find("Bobby") then return "Bobby" end
-                    if txt:find("Desert Officer") then return "Desert Officer" end
-                    if txt:find("Desert Bandit") then return "Desert Bandit" end
                 end
             end
         end
@@ -216,26 +170,9 @@ local function getActiveQuestMob()
     return nil
 end
 
-local function getTargetIslandData(hrp)
-    local targetIslandName = getgenv().SelectedIsland or "Jungle"
-    if targetIslandName == "Auto" then
-        local minDist = math.huge
-        local selected = Islands["Jungle"]
-        for _, island in pairs(Islands) do
-            local dist = (hrp.Position - island.Pos).Magnitude
-            if dist < minDist then
-                minDist = dist
-                selected = island
-            end
-        end
-        return selected
-    end
-    return Islands[targetIslandName] or Islands["Jungle"]
-end
-
-local function getTargetQuestData(hrp)
+local function getTargetQuestData()
     local myLevel = p:FindFirstChild("Data") and p.Data:FindFirstChild("Level") and p.Data.Level.Value or 10
-    local islandData = getTargetIslandData(hrp)
+    local islandData = Islands["Jungle"]
     
     for _, q in ipairs(islandData.Quests) do
         if myLevel >= q.Req then
@@ -262,7 +199,7 @@ local function getEnemy(mobName, fallbackMob, hrp)
             if m.Name:find(mobName) then
                 local isKing = m.Name:find("King")
                 if mobName == "Gorilla" and isKing then
-                    -- пропускаем
+                    -- пропускаем босса, если квест на обычных
                 else
                     if dist < minDist then
                         minDist = dist
@@ -283,6 +220,7 @@ local function getEnemy(mobName, fallbackMob, hrp)
     return target or fallbackTarget
 end
 
+-- Легитный фоновый поток (рулетка + статы)
 task.spawn(function()
     while getgenv().Farm do
         autoStoreAllFruits()
@@ -297,10 +235,11 @@ task.spawn(function()
                 autoStoreAllFruits()
             end)
         end
-        task.wait(2)
+        task.wait(3)
     end
 end)
 
+-- Плавное наведение камеры
 getgenv().FarmConnection = RunService.RenderStepped:Connect(function()
     if not getgenv().Farm then return end
     if currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
@@ -314,10 +253,10 @@ getgenv().FarmConnection = RunService.RenderStepped:Connect(function()
     end
 end)
 
--- ОСНОВНОЙ ЦИКЛ ФАРМА
+-- ОСНОВНОЙ ЦИКЛ ЛЕГИТНОГО ФАРМА
 task.spawn(function()
     while getgenv().Farm do
-        task.wait(0.04)
+        task.wait(0.05)
         pcall(function()
             local char = p.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -330,6 +269,7 @@ task.spawn(function()
 
             hum.AutoRotate = true
 
+            -- Отступ при низком HP
             if hum.Health < hum.MaxHealth * 0.35 then
                 isRecoveringHP = true
             elseif hum.Health >= hum.MaxHealth * 0.85 then
@@ -338,7 +278,7 @@ task.spawn(function()
 
             if isRecoveringHP then
                 currentTarget = nil
-                local qData = getTargetQuestData(hrp)
+                local qData = getTargetQuestData()
                 local enemy = getEnemy(qData.Mob, qData.FallbackMob, hrp)
                 
                 if enemy and enemy:FindFirstChild("HumanoidRootPart") then
@@ -346,45 +286,29 @@ task.spawn(function()
                     local fleeDir = (hrp.Position - eHrp.Position).Unit
                     local fleePos = hrp.Position + Vector3.new(fleeDir.X * 45, 0, fleeDir.Z * 45)
                     hum:MoveTo(fleePos)
-                else
-                    hum:MoveTo(hrp.Position)
                 end
                 return
             end
 
             equipLight(char, hum)
 
-            local currentIslandData = getTargetIslandData(hrp)
-            local currentQuestData = getTargetQuestData(hrp)
+            local currentQuestData = getTargetQuestData()
             local activeMob = getActiveQuestMob()
 
-            -- Сброс квеста, если он не для текущего острова
-            if activeMob and activeMob ~= currentQuestData.Mob and activeMob ~= currentQuestData.FallbackMob then
-                abandonQuest()
-                task.wait(0.3)
-                activeMob = nil
-            end
-
-            -- Если мы далеко от острова — идём к нему
-            local distToIsland = (hrp.Position - currentIslandData.Pos).Magnitude
-            if distToIsland > 350 then
-                hum:MoveTo(currentIslandData.Pos)
-                return
-            end
-
-            -- Взятие квеста
+            -- Безопасное взятие квеста Джунглей
             if not activeMob then
                 takeQuest(currentQuestData.Name, currentQuestData.Level)
-                activeMob = currentQuestData.Mob
+                task.wait(0.2)
+                activeMob = getActiveQuestMob()
             end
 
-            currentTarget = getEnemy(activeMob, currentQuestData.FallbackMob, hrp)
+            currentTarget = getEnemy(activeMob or currentQuestData.Mob, currentQuestData.FallbackMob, hrp)
 
-            if not currentTarget and Waypoints[activeMob] then
-                hum:MoveTo(Waypoints[activeMob])
+            if not currentTarget and Waypoints[activeMob or currentQuestData.Mob] then
+                hum:MoveTo(Waypoints[activeMob or currentQuestData.Mob])
             end
 
-            -- Движение и бой
+            -- Стандартное перемещение и бой шагом
             if currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
                 local mHrp = currentTarget.HumanoidRootPart
                 local mHum = currentTarget:FindFirstChild("Humanoid")
@@ -394,8 +318,8 @@ task.spawn(function()
                     hum:MoveTo(mHrp.Position)
                     local movedDist = (hrp.Position - lastHrpPos).Magnitude
                     if movedDist < 0.4 then
-                        stuckTimer = stuckTimer + 0.04
-                        if stuckTimer >= 0.25 then doubleJump() end
+                        stuckTimer = stuckTimer + 0.05
+                        if stuckTimer >= 0.3 then doubleJump() end
                     else
                         stuckTimer = 0
                     end
@@ -407,7 +331,7 @@ task.spawn(function()
 
                 local now = tick()
                 if dist > 10 and dist < 35 then
-                    if now - lastDashTime >= 0.8 then
+                    if now - lastDashTime >= 1.0 then
                         lastDashTime = now
                         pressKey(Enum.KeyCode.Q, 0x51)
                     end
@@ -447,4 +371,4 @@ task.spawn(function()
     end
 end)
 
-print("✅ Скрипт загружен! Остров: " .. getgenv().SelectedIsland)
+print("🛡️ Безопасный скрипт загружен! Фарм Джунглей активен.")
