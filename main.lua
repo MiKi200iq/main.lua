@@ -15,6 +15,10 @@ local lastDashTime = 0
 local lastZTime = 0
 local lastXTime = 0
 
+-- Переменные для отслеживания застревания
+local lastHrpPos = Vector3.new(0, 0, 0)
+local stuckTimer = 0
+
 -- Координаты точек спавна мобов в Джунглях
 local Waypoints = {
     ["Monkey"] = Vector3.new(-1600, 36, 150),
@@ -31,28 +35,22 @@ if getgenv().FarmConnection then
     getgenv().FarmConnection = nil
 end
 
--- НАДЕЖНОЕ НАЖАТИЕ КЛАВИШ (ДЛЯ DELTA И EXECUTOR-ОВ)
+-- НАДЕЖНОЕ НАЖАТИЕ КЛАВИШ
 local function pressKey(keyCode, charCode)
     pcall(function()
-        -- Метод 1: Через VirtualInputManager
         VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
-        
-        -- Метод 2: Нативная функция исполнителя (если поддерживается)
         if keypress then keypress(charCode) end
-        
-        task.wait(0.1) -- Держим кнопку 0.1 секунды, чтобы Blox Fruits успел зафиксировать
-        
+        task.wait(0.08)
         VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
         if keyrelease then keyrelease(charCode) end
     end)
 end
 
--- 🔥 АВТО-ПРОКАЧКА СТАТОВ (Распределяет очки в Меч и Защиту)
+-- АВТО-ПРОКАЧКА СТАТОВ (Sword и Defense)
 local function autoAddStats()
     pcall(function()
         local points = p.Data.Points.Value
         if points and points > 0 then
-            -- Вкладываем очки в Sword (Меч) и Defense (Защиту)
             CommF:InvokeServer("AddPoint", "Sword", 1)
             CommF:InvokeServer("AddPoint", "Defense", 1)
         end
@@ -87,7 +85,7 @@ local function takeQuest(questName, questLevel)
     end)
 end
 
--- Поиск ТОЛЬКО обычных мобов (без Босса)
+-- Поиск обычных мобов (без Босса)
 local function getEnemy(mobName, hrp)
     local enemiesFolder = workspace:FindFirstChild("Enemies")
     if not enemiesFolder then return nil end
@@ -119,11 +117,11 @@ local function getJungleQuestData()
     return JungleQuests[1]
 end
 
--- Фоновый поток для фруктов и авто-статов
+-- Поток выбивания и сохранения фруктов + кача статов
 task.spawn(function()
     while getgenv().Farm do
         autoStoreAllFruits()
-        autoAddStats() -- Прокачка характеристик
+        autoAddStats()
         
         local currentTime = os.time()
         if currentTime - lastFruitSpin >= 7200 or lastFruitSpin == 0 then
@@ -138,7 +136,7 @@ task.spawn(function()
     end
 end)
 
--- Плавное наведение камеры
+-- Наведение камеры
 getgenv().FarmConnection = RunService.RenderStepped:Connect(function()
     if not getgenv().Farm then return end
     if currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
@@ -152,7 +150,7 @@ getgenv().FarmConnection = RunService.RenderStepped:Connect(function()
     end
 end)
 
--- ОСНОВНОЙ ЦИКЛ БОЯ И ДВИЖЕНИЯ
+-- ОСНОВНОЙ ЦИКЛ (Фарм + Скиллы + Q-Рывок + Спам Пробела при застревании)
 task.spawn(function()
     while getgenv().Farm do
         task.wait(0.04)
@@ -168,7 +166,7 @@ task.spawn(function()
 
             hum.AutoRotate = true
 
-            -- Экипировка оружия (Катана / Sword)
+            -- Экипировка оружия
             if not char:FindFirstChildOfClass("Tool") then
                 for _, t in pairs(p.Backpack:GetChildren()) do
                     if t:IsA("Tool") and not t.Name:find("Fruit") then
@@ -178,17 +176,16 @@ task.spawn(function()
                 end
             end
 
-            -- Взятие квеста и поиск моба
+            -- Квест и цель
             local qData = getJungleQuestData()
             takeQuest(qData.Name, qData.Level)
             currentTarget = getEnemy(qData.Mob, hrp)
 
-            -- Бег в точку спавна, если нет мобов рядом
             if not currentTarget and Waypoints[qData.Mob] then
                 hum:MoveTo(Waypoints[qData.Mob])
             end
 
-            -- Боевая логика
+            -- Движение и атака
             if currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
                 local mHrp = currentTarget.HumanoidRootPart
                 local mHum = currentTarget:FindFirstChild("Humanoid")
@@ -196,37 +193,50 @@ task.spawn(function()
 
                 if dist > 5 then
                     hum:MoveTo(mHrp.Position)
+
+                    -- 🔥 ПРОВЕРКА НА ЗАТРЕВАНИЕ: Если не может приблизиться — спамит ПРОБЕЛ
+                    local movedDist = (hrp.Position - lastHrpPos).Magnitude
+                    if movedDist < 0.4 then
+                        stuckTimer = stuckTimer + 0.04
+                        if stuckTimer >= 0.25 then -- Застрял дольше чем на 0.25 сек
+                            hum.Jump = true
+                            pressKey(Enum.KeyCode.Space, 0x20) -- Спам пробела
+                        end
+                    else
+                        stuckTimer = 0
+                    end
+                    lastHrpPos = hrp.Position
+                else
+                    stuckTimer = 0
+                    lastHrpPos = hrp.Position
                 end
 
                 local now = tick()
 
-                -- 1. РЫВОК НА Q (при сближении на расстоянии 10-35 студов)
-                if dist > 10
-                    if now - lastDashTime >= 0.8 then
+                -- 1. Рывок на Q (при приближении 10-35 студов)
+                if dist > 10 and dist < 35 then
+                    if now - lastDashTime >= 2.0 then
                         lastDashTime = now
                         pressKey(Enum.KeyCode.Q, 0x51)
                     end
                 end
 
-                -- 2. АТАКА И СКИЛЛЫ
+                -- 2. Атака (ЛКМ) и Скиллы (Z, X)
                 if dist <= 10 and mHum and mHum.Health > 0 then
-                    -- Скилл Z (Тихий порыв) — кулдаун 3.5 сек
                     if now - lastZTime >= 3.5 then
                         lastZTime = now
                         pressKey(Enum.KeyCode.Z, 0x5A)
-                    -- Скилл X (Воздушный удар) — кулдаун 5.5 сек
                     elseif now - lastXTime >= 5.5 then
                         lastXTime = now
                         pressKey(Enum.KeyCode.X, 0x58)
                     else
-                        -- Обычный удар ЛКМ
                         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
                         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
                     end
                 end
             end
 
-            -- ПЛАВАНИЕ И ПРЕДОТВРАЩЕНИЕ ЗАТРЕВАНИЙ
+            -- Всплытие в воде и Raycast стен
             local state = hum:GetState()
             if state == Enum.HumanoidStateType.Swimming then
                 hum.Jump = true
