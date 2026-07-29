@@ -441,7 +441,7 @@ getgenv().FarmConnection = RunService.RenderStepped:Connect(function()
     end
 end)
 
--- Основной поток фарма
+-- Основной цикл фарма
 task.spawn(function()
     while true do
         task.wait(0.05)
@@ -458,21 +458,44 @@ task.spawn(function()
 
                 hum.AutoRotate = true
 
+                -- Проверка уровня здоровья (пороги 35% и 85%)
                 if hum.Health < hum.MaxHealth * 0.35 then
                     isRecoveringHP = true
                 elseif hum.Health >= hum.MaxHealth * 0.85 then
                     isRecoveringHP = false
                 end
 
+                -- НОВАЯ ЛОГИКА ОТСТУПЛЕНИЯ В РАДИУСЕ 100 СТУДОВ
                 if isRecoveringHP then
                     currentTarget = nil
-                    local qData = getTargetQuestData()
-                    local enemy = getEnemy(qData.Mob, hrp)
-                    if enemy and enemy:FindFirstChild("HumanoidRootPart") then
-                        local eHrp = enemy.HumanoidRootPart
+                    
+                    local nearestEnemy = nil
+                    local minDist = 100 -- Ищем врагов строго в радиусе 100 студов
+                    local enemiesFolder = workspace:FindFirstChild("Enemies")
+
+                    if enemiesFolder then
+                        for _, m in pairs(enemiesFolder:GetChildren()) do
+                            local mHum = m:FindFirstChild("Humanoid")
+                            local mHrp = m:FindFirstChild("HumanoidRootPart")
+                            if mHum and mHrp and mHum.Health > 0 then
+                                local dist = (hrp.Position - mHrp.Position).Magnitude
+                                if dist < minDist then
+                                    minDist = dist
+                                    nearestEnemy = m
+                                end
+                            end
+                        end
+                    end
+
+                    -- Убегаем только если враг реален и ближе 100 студов
+                    if nearestEnemy and nearestEnemy:FindFirstChild("HumanoidRootPart") then
+                        local eHrp = nearestEnemy.HumanoidRootPart
                         local fleeDir = (hrp.Position - eHrp.Position).Unit
                         local fleePos = hrp.Position + Vector3.new(fleeDir.X * 45, 0, fleeDir.Z * 45)
                         hum:MoveTo(fleePos)
+                    else
+                        -- Врагов рядом нет -> остаемся на месте и спокойно восстанавливаем HP
+                        hum:MoveTo(hrp.Position)
                     end
                     return
                 end
