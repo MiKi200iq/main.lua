@@ -214,8 +214,8 @@ task.spawn(function()
                 local now = tick()
 
                 -- 1. Рывок на Q (при приближении 10-35 студов)
-                if dist > 10 and dist < 35 then
-                    if now - lastDashTime >= 2.0 then
+                if dist > 10
+                    if now - lastDashTime >= 0.8 then
                         lastDashTime = now
                         pressKey(Enum.KeyCode.Q, 0x51)
                     end
