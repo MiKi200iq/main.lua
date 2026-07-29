@@ -1,4 +1,6 @@
 getgenv().Farm = true
+-- 🔥 ВЫБОР ОСТРОВА: "Jungle", "Pirate Village", "Desert" или "Auto"
+getgenv().SelectedIsland = "Jungle"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -25,8 +27,7 @@ local stuckTimer = 0
 
 -- ЕДИНАЯ СИСТЕМА ОСТРОВОВ И КВЕСТОВ
 local Islands = {
-    {
-        Name = "Jungle",
+    ["Jungle"] = {
         Pos = Vector3.new(-1240, 6, -490),
         Quests = {
             {Req = 20, Name = "JungleQuest", Level = 3, Mob = "Gorilla King", FallbackMob = "Gorilla"},
@@ -34,8 +35,7 @@ local Islands = {
             {Req = 10, Name = "JungleQuest", Level = 1, Mob = "Monkey", FallbackMob = "Monkey"},
         }
     },
-    {
-        Name = "Pirate Village",
+    ["Pirate Village"] = {
         Pos = Vector3.new(-1115, 14, 3850),
         Quests = {
             {Req = 55, Name = "BuggyQuest1", Level = 3, Mob = "Bobby", FallbackMob = "Brute"},
@@ -43,8 +43,7 @@ local Islands = {
             {Req = 30, Name = "BuggyQuest1", Level = 1, Mob = "Pirate", FallbackMob = "Pirate"},
         }
     },
-    {
-        Name = "Desert",
+    ["Desert"] = {
         Pos = Vector3.new(895, 7, 4370),
         Quests = {
             {Req = 75, Name = "DesertQuest", Level = 2, Mob = "Desert Officer", FallbackMob = "Desert Bandit"},
@@ -98,7 +97,7 @@ local function doubleJump()
     end)
 end
 
--- 🔥 АВТО-ПРОКАЧКА СТАТОВ ПОД СВЕТ (Demon Fruit + Defense)
+-- АВТО-ПРОКАЧКА СТАТОВ ПОД СВЕТ (Demon Fruit + Defense)
 local function autoAddStats()
     pcall(function()
         local points = p.Data.Points.Value
@@ -127,7 +126,7 @@ local function autoStoreAllFruits()
     end)
 end
 
--- 🔥 ПОИСК И ЭКИПИРОВКА ФРУКТА СВЕТ (LIGHT)
+-- ПОИСК И ЭКИПИРОВКА ФРУКТА СВЕТ (LIGHT)
 local function getLightTool()
     if p.Character then
         for _, item in pairs(p.Character:GetChildren()) do
@@ -164,6 +163,23 @@ local function equipLight(char, hum)
     return false
 end
 
+-- 🔥 СБРОС СТАРОГО/ЧУЖОГО КВЕСТА
+local function abandonQuest()
+    pcall(function()
+        CommF:InvokeServer("AbandonQuest")
+    end)
+end
+
+-- ВЗЯТИЕ КВЕСТА
+local function takeQuest(questName, questLevel)
+    pcall(function()
+        local questGui = p:FindFirstChild("PlayerGui") and p.PlayerGui:FindFirstChild("Main") and p.PlayerGui.Main:FindFirstChild("Quest")
+        if not (questGui and questGui.Visible) then
+            CommF:InvokeServer("StartQuest", questName, questLevel)
+        end
+    end)
+end
+
 -- ОПРЕДЕЛЕНИЕ ЦЕЛИ ПО ВИДИМОМУ КВЕСТУ В UI
 local function getActiveQuestMob()
     local questGui = p:FindFirstChild("PlayerGui") and p.PlayerGui:FindFirstChild("Main") and p.PlayerGui.Main:FindFirstChild("Quest")
@@ -187,38 +203,33 @@ local function getActiveQuestMob()
     return nil
 end
 
--- Взятие квеста
-local function takeQuest(questName, questLevel)
-    pcall(function()
-        local questGui = p:FindFirstChild("PlayerGui") and p.PlayerGui:FindFirstChild("Main") and p.PlayerGui.Main:FindFirstChild("Quest")
-        if not (questGui and questGui.Visible) then
-            CommF:InvokeServer("StartQuest", questName, questLevel)
-        end
-    end)
-end
-
--- АВТО-ПОИСК ЛУЧШЕГО КВЕСТА ДЛЯ ТЕКУЩЕГО ОСТРОВА
-local function getQuestForCurrentLocation(hrp)
+-- ПОЛУЧЕНИЕ КВЕСТА ДЛЯ ВЫБРАННОГО ОСТРОВА
+local function getTargetQuestData(hrp)
     local myLevel = p:FindFirstChild("Data") and p.Data:FindFirstChild("Level") and p.Data.Level.Value or 10
+    local targetIslandName = getgenv().SelectedIsland or "Jungle"
     
-    local nearestIsland = Islands[1]
-    local minDist = math.huge
+    local selectedData = nil
     
-    for _, island in ipairs(Islands) do
-        local dist = (hrp.Position - island.Pos).Magnitude
-        if dist < minDist then
-            minDist = dist
-            nearestIsland = island
+    if targetIslandName == "Auto" then
+        local minDist = math.huge
+        for name, island in pairs(Islands) do
+            local dist = (hrp.Position - island.Pos).Magnitude
+            if dist < minDist then
+                minDist = dist
+                selectedData = island
+            end
         end
+    else
+        selectedData = Islands[targetIslandName] or Islands["Jungle"]
     end
     
-    for _, q in ipairs(nearestIsland.Quests) do
+    for _, q in ipairs(selectedData.Quests) do
         if myLevel >= q.Req then
             return q
         end
     end
     
-    return nearestIsland.Quests[#nearestIsland.Quests]
+    return selectedData.Quests[#selectedData.Quests]
 end
 
 -- УМНЫЙ ПОИСК ЦЕЛИ В ПАПКЕ ВРАГОВ
@@ -281,7 +292,7 @@ end)
 
 -- Наведение камеры
 getgenv().FarmConnection = RunService.RenderStepped:Connect(function()
-    if not getgenv().Farm then return end
+    if not getgenv().Farm me Target then return end
     if currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
         local mHum = currentTarget:FindFirstChild("Humanoid")
         if not mHum or mHum.Health <= 0 then
@@ -318,7 +329,7 @@ task.spawn(function()
 
             if isRecoveringHP then
                 currentTarget = nil
-                local qData = getQuestForCurrentLocation(hrp)
+                local qData = getTargetQuestData(hrp)
                 local enemy = getEnemy(qData.Mob, qData.FallbackMob, hrp)
                 
                 if enemy and enemy:FindFirstChild("HumanoidRootPart") then
@@ -349,12 +360,18 @@ task.spawn(function()
                 return
             end
 
-            -- 🔥 ГАРАНТИРОВАННО ДЕРЖИМ СВЕТ В РУКАХ
+            -- ДЕРЖИМ СВЕТ В РУКАХ
             equipLight(char, hum)
 
-            -- ЛОГИКА ВЗЯТИЯ КВЕСТА
+            local currentQuestData = getTargetQuestData(hrp)
             local activeMob = getActiveQuestMob()
-            local currentQuestData = getQuestForCurrentLocation(hrp)
+
+            -- 🔥 ЕСЛИ ВЗЯТ НЕСООТВЕТСТВУЮЩИЙ КВЕСТ (например, на Брутов) — АВТОМАТИЧЕСКИ СБРАСЫВАЕМ ЕГО!
+            if activeMob and activeMob ~= currentQuestData.Mob and activeMob ~= currentQuestData.FallbackMob then
+                abandonQuest()
+                task.wait(0.2)
+                activeMob = nil
+            end
 
             if not activeMob then
                 takeQuest(currentQuestData.Name, currentQuestData.Level)
@@ -367,7 +384,7 @@ task.spawn(function()
                 hum:MoveTo(Waypoints[activeMob])
             end
 
-            -- 🔥 ДВИЖЕНИЕ И АТАКА СВЕТОМ
+            -- ДВИЖЕНИЕ И АТАКА
             if currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
                 local mHrp = currentTarget.HumanoidRootPart
                 local mHum = currentTarget:FindFirstChild("Humanoid")
@@ -400,9 +417,8 @@ task.spawn(function()
                     end
                 end
 
-                -- 🔥 БОЙ ФРУКТОМ СВЕТ (Скиллы Z, X, C, V + ЛКМ Световым мечом)
+                -- БОЙ ФРУКТОМ СВЕТ
                 if dist <= 12 and mHum and mHum.Health > 0 then
-                    -- Прокаст способностей по откату
                     if now - lastZTime >= 3.5 then
                         lastZTime = now
                         pressKey(Enum.KeyCode.Z, 0x5A)
@@ -416,7 +432,6 @@ task.spawn(function()
                         lastVTime = now
                         pressKey(Enum.KeyCode.V, 0x56)
                     else
-                        -- Непрерывные удары Световым мечом (ЛКМ по центру экрана)
                         local centerX = cam.ViewportSize.X / 2
                         local centerY = cam.ViewportSize.Y / 2
                         VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, true, game, 1)
