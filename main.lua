@@ -1,5 +1,5 @@
 getgenv().Farm = true
-getgenv().SelectedIsland = "Jungle"
+getgenv().SelectedIsland = "Auto"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
