@@ -1,10 +1,16 @@
-getgenv().Farm = true
-getgenv().SelectedIsland = "Auto"
+-- Удаляем старое меню, если скрипт перезапускается
+if game:GetService("CoreGui"):FindFirstChild("FarmHUD") then
+    game:GetService("CoreGui"):FindFirstChild("FarmHUD"):Destroy()
+end
+
+getgenv().Farm = false
+getgenv().SelectedIsland = "Starter" -- По умолчанию "Starter" или "Jungle"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local VirtualInputManager = game:GetService("VirtualInputManager")
+local UserInputService = game:GetService("UserInputService")
 
 local p = Players.LocalPlayer
 local cam = workspace.CurrentCamera
@@ -15,34 +21,174 @@ local lastFruitSpin = 0
 local lastDashTime = 0
 local isRecoveringHP = false
 
--- Кулдауны скиллов Света (Z, X, C, V, F)
-local lastZTime = 0
-local lastXTime = 0
-local lastCTime = 0
-local lastVTime = 0
-local lastFTime = 0
-
+local lastZTime, lastXTime, lastCTime, lastVTime, lastFTime = 0, 0, 0, 0, 0
 local lastHrpPos = Vector3.new(0, 0, 0)
 local stuckTimer = 0
 
--- БЕЗОПАСНАЯ СИСТЕМА КВЕСТОВ ДЖУНГЛЕЙ
-local Islands = {
+-- БАЗА ДАННЫХ ОСТРОВОВ И КВЕСТОВ
+local IslandsData = {
+    ["Starter"] = {
+        Name = "Начальный остров",
+        Quests = {
+            {Req = 1, Name = "BanditQuest", Level = 1, Mob = "Bandit"}
+        },
+        Waypoints = {
+            ["Bandit"] = Vector3.new(1050, 16, 1400)
+        }
+    },
     ["Jungle"] = {
-        Pos = Vector3.new(-1240, 6, -490),
+        Name = "Джунгли",
         Quests = {
             {Req = 20, Name = "JungleQuest", Level = 3, Mob = "Gorilla King"},
             {Req = 15, Name = "JungleQuest", Level = 2, Mob = "Gorilla"},
             {Req = 10, Name = "JungleQuest", Level = 1, Mob = "Monkey"},
+        },
+        Waypoints = {
+            ["Monkey"] = Vector3.new(-1600, 36, 150),
+            ["Gorilla"] = Vector3.new(-1240, 6, -490),
+            ["Gorilla King"] = Vector3.new(-1130, 15, -490),
         }
     }
 }
 
-local Waypoints = {
-    ["Monkey"] = Vector3.new(-1600, 36, 150),
-    ["Gorilla"] = Vector3.new(-1240, 6, -490),
-    ["Gorilla King"] = Vector3.new(-1130, 15, -490),
-}
+---------------------------------------------------------
+-- СОЗДАНИЕ ГРАФИЧЕСКОГО ИНТЕРФЕЙСА (HUD)
+---------------------------------------------------------
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "FarmHUD"
+ScreenGui.ResetOnSpawn = false
 
+-- Проверка безопасности родителя GUI
+local parentContainer = game:GetService("CoreGui") or p:WaitForChild("PlayerGui")
+ScreenGui.Parent = parentContainer
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 280, 0, 220)
+MainFrame.Position = UDim2.new(0.05, 0, 0.3, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(24, 24, 28)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true -- Перетаскивание мышкой
+MainFrame.Parent = ScreenGui
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 10)
+UICorner.Parent = MainFrame
+
+-- Заголовок
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 40)
+Title.BackgroundColor3 = Color3.fromRGB(34, 34, 40)
+Title.Text = "🛡️ Blox Fruits Auto Farm"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 16
+Title.Font = Enum.Font.SourceSansBold
+Title.Parent = MainFrame
+
+local TitleCorner = Instance.new("UICorner")
+TitleCorner.CornerRadius = UDim.new(0, 10)
+TitleCorner.Parent = Title
+
+-- Кнопка ВКЛ/ВЫКЛ ФАРМ
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Size = UDim2.new(0.9, 0, 0, 40)
+ToggleBtn.Position = UDim2.new(0.05, 0, 0.23, 0)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+ToggleBtn.Text = "ФАРМ: ВЫКЛ"
+ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleBtn.TextSize = 15
+ToggleBtn.Font = Enum.Font.SourceSansBold
+ToggleBtn.Parent = MainFrame
+
+local ToggleCorner = Instance.new("UICorner")
+ToggleCorner.CornerRadius = UDim.new(0, 8)
+ToggleCorner.Parent = ToggleBtn
+
+-- Кнопка Выбора: Начальный Остров
+local StarterBtn = Instance.new("TextButton")
+StarterBtn.Size = UDim2.new(0.42, 0, 0, 35)
+StarterBtn.Position = UDim2.new(0.05, 0, 0.47, 0)
+StarterBtn.BackgroundColor3 = Color3.fromRGB(60, 130, 240)
+StarterBtn.Text = "🏝️ Начальный"
+StarterBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+StarterBtn.TextSize = 13
+StarterBtn.Font = Enum.Font.SourceSansBold
+StarterBtn.Parent = MainFrame
+
+local StarterCorner = Instance.new("UICorner")
+StarterCorner.CornerRadius = UDim.new(0, 8)
+StarterCorner.Parent = StarterBtn
+
+-- Кнопка Выбора: Джунгли
+local JungleBtn = Instance.new("TextButton")
+JungleBtn.Size = UDim2.new(0.42, 0, 0, 35)
+JungleBtn.Position = UDim2.new(0.53, 0, 0.47, 0)
+JungleBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+JungleBtn.Text = "🌴 Джунгли"
+JungleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+JungleBtn.TextSize = 13
+JungleBtn.Font = Enum.Font.SourceSansBold
+JungleBtn.Parent = MainFrame
+
+local JungleCorner = Instance.new("UICorner")
+JungleCorner.CornerRadius = UDim.new(0, 8)
+JungleCorner.Parent = JungleBtn
+
+-- Метка Статуса
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Size = UDim2.new(0.9, 0, 0, 30)
+StatusLabel.Position = UDim2.new(0.05, 0, 0.72, 0)
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Text = "Остров: Начальный | Фарм остановлен"
+StatusLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+StatusLabel.TextSize = 12
+StatusLabel.Font = Enum.Font.SourceSans
+StatusLabel.Parent = MainFrame
+
+---------------------------------------------------------
+-- СОБЫТИЯ И ЛОГИКА ИНТЕРФЕЙСА
+---------------------------------------------------------
+local function updateUI()
+    if getgenv().Farm then
+        ToggleBtn.BackgroundColor3 = Color3.fromRGB(45, 165, 80)
+        ToggleBtn.Text = "ФАРМ: ВКЛ"
+        StatusLabel.Text = "Остров: " .. IslandsData[getgenv().SelectedIsland].Name .. " | Активен"
+    else
+        ToggleBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+        ToggleBtn.Text = "ФАРМ: ВЫКЛ"
+        StatusLabel.Text = "Остров: " .. IslandsData[getgenv().SelectedIsland].Name .. " | Остановлен"
+    end
+
+    if getgenv().SelectedIsland == "Starter" then
+        StarterBtn.BackgroundColor3 = Color3.fromRGB(60, 130, 240)
+        JungleBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+    else
+        StarterBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+        JungleBtn.BackgroundColor3 = Color3.fromRGB(60, 130, 240)
+    end
+end
+
+ToggleBtn.MouseButton1Click:Connect(function()
+    getgenv().Farm = not getgenv().Farm
+    updateUI()
+end)
+
+StarterBtn.MouseButton1Click:Connect(function()
+    getgenv().SelectedIsland = "Starter"
+    updateUI()
+end)
+
+JungleBtn.MouseButton1Click:Connect(function()
+    getgenv().SelectedIsland = "Jungle"
+    updateUI()
+end)
+
+updateUI()
+
+---------------------------------------------------------
+-- ОСНОВНАЯ ЛОГИКА ФАРМА
+---------------------------------------------------------
 if getgenv().FarmConnection then
     getgenv().FarmConnection:Disconnect()
     getgenv().FarmConnection = nil
@@ -74,22 +220,18 @@ local function doubleJump()
     end)
 end
 
--- Проверка наличия моба/босса на карте
 local function isMobAlive(mobName)
     local enemiesFolder = workspace:FindFirstChild("Enemies")
     if not enemiesFolder then return false end
     for _, m in pairs(enemiesFolder:GetChildren()) do
         if m.Name:find(mobName) then
             local mHum = m:FindFirstChild("Humanoid")
-            if mHum and mHum.Health > 0 then
-                return true
-            end
+            if mHum and mHum.Health > 0 then return true end
         end
     end
     return false
 end
 
--- Авто-прокачка Demon Fruit + Defense
 local function autoAddStats()
     pcall(function()
         local points = p.Data.Points.Value
@@ -100,7 +242,6 @@ local function autoAddStats()
     end)
 end
 
--- Убиралка фруктов в инвентарь
 local function autoStoreAllFruits()
     pcall(function()
         for _, item in pairs(p.Backpack:GetChildren()) do
@@ -118,47 +259,30 @@ local function autoStoreAllFruits()
     end)
 end
 
-local function getLightTool()
+local function getWeaponTool()
     if p.Character then
         for _, item in pairs(p.Character:GetChildren()) do
-            if item:IsA("Tool") then
-                local tt = item:FindFirstChild("ToolTip") and item.ToolTip.Value or ""
-                if item.Name:find("Light") or tt == "Blox Fruit" or tt == "Demon Fruit" then
-                    return item
-                end
-            end
+            if item:IsA("Tool") then return item end
         end
     end
     for _, item in pairs(p.Backpack:GetChildren()) do
-        if item:IsA("Tool") then
-            local tt = item:FindFirstChild("ToolTip") and item.ToolTip.Value or ""
-            if item.Name:find("Light") or tt == "Blox Fruit" or tt == "Demon Fruit" then
-                return item
-            end
-        end
+        if item:IsA("Tool") then return item end
     end
     return nil
 end
 
-local function equipLight(char, hum)
+local function equipWeapon(char, hum)
     if not char or not hum then return false end
-    local light = getLightTool()
-    if light then
-        if light.Parent == char then
-            return true
-        else
-            hum:EquipTool(light)
-            return true
-        end
+    local weapon = getWeaponTool()
+    if weapon then
+        if weapon.Parent ~= char then hum:EquipTool(weapon) end
+        return true
     end
     return false
 end
 
--- Отмена текущего квеста
 local function abandonQuest()
-    pcall(function()
-        CommF:InvokeServer("AbandonQuest")
-    end)
+    pcall(function() CommF:InvokeServer("AbandonQuest") end)
 end
 
 local function takeQuest(questName, questLevel)
@@ -180,6 +304,7 @@ local function getActiveQuestMob()
                     if txt:find("Gorilla King") then return "Gorilla King" end
                     if txt:find("Gorilla") then return "Gorilla" end
                     if txt:find("Monkey") then return "Monkey" end
+                    if txt:find("Bandit") then return "Bandit" end
                 end
             end
         end
@@ -187,89 +312,70 @@ local function getActiveQuestMob()
     return nil
 end
 
--- Динамический выбор квеста (проверяет наличие Босса)
 local function getTargetQuestData()
-    local myLevel = 10
-    pcall(function()
-        if p:FindFirstChild("Data") and p.Data:FindFirstChild("Level") then
-            myLevel = p.Data.Level.Value
-        end
-    end)
+    local currentIsland = getgenv().SelectedIsland
+    local islandObj = IslandsData[currentIsland]
 
-    local jungleQuests = Islands["Jungle"].Quests
-
-    if myLevel >= 20 then
-        -- Берём квест на Короля только если он сейчас жив
-        if isMobAlive("Gorilla King") then
-            return jungleQuests[1]
+    if currentIsland == "Starter" then
+        return islandObj.Quests[1]
+    elseif currentIsland == "Jungle" then
+        local myLevel = 10
+        pcall(function() myLevel = p.Data.Level.Value end)
+        if myLevel >= 20 then
+            if isMobAlive("Gorilla King") then return islandObj.Quests[1] else return islandObj.Quests[2] end
+        elseif myLevel >= 15 then
+            return islandObj.Quests[2]
         else
-            return jungleQuests[2] -- Обычные горилы
+            return islandObj.Quests[3]
         end
-    elseif myLevel >= 15 then
-        return jungleQuests[2]
-    else
-        return jungleQuests[3]
     end
 end
 
-local function getEnemy(mobName, fallbackMob, hrp)
+local function getEnemy(mobName, hrp)
     local enemiesFolder = workspace:FindFirstChild("Enemies")
     if not enemiesFolder then return nil end
-
     local target, minDist = nil, math.huge
-    local fallbackTarget, fallbackMinDist = nil, math.huge
 
     for _, m in pairs(enemiesFolder:GetChildren()) do
         local mHum = m:FindFirstChild("Humanoid")
         local mHrp = m:FindFirstChild("HumanoidRootPart")
-
         if mHum and mHrp and mHum.Health > 0 then
             local dist = (hrp.Position - mHrp.Position).Magnitude
-
             if m.Name:find(mobName) then
-                local isKing = m.Name:find("King")
-                if mobName == "Gorilla" and isKing then
+                if mobName == "Gorilla" and m.Name:find("King") then
                     -- пропуск босса, если квест на обычных мобов
-                else
-                    if dist < minDist then
-                        minDist = dist
-                        target = m
-                    end
-                end
-            end
-
-            if fallbackMob and m.Name:find(fallbackMob) and not m.Name:find("King") then
-                if dist < fallbackMinDist then
-                    fallbackMinDist = dist
-                    fallbackTarget = m
+                elseif dist < minDist then
+                    minDist = dist
+                    target = m
                 end
             end
         end
     end
-
-    return target or fallbackTarget
+    return target
 end
 
--- Фоновый поток (крутка фруктов и прокачка)
+-- Вспомогательный поток
 task.spawn(function()
-    while getgenv().Farm do
-        autoStoreAllFruits()
-        autoAddStats()
+    while true do
+        if getgenv().Farm then
+            autoStoreAllFruits()
+            autoAddStats()
 
-        local currentTime = os.time()
-        if currentTime - lastFruitSpin >= 7200 or lastFruitSpin == 0 then
-            pcall(function()
-                CommF:InvokeServer("Cousin", "Buy")
-                lastFruitSpin = os.time()
-                task.wait(1)
-                autoStoreAllFruits()
-            end)
+            local currentTime = os.time()
+            if currentTime - lastFruitSpin >= 7200 or lastFruitSpin == 0 then
+                pcall(function()
+                    CommF:InvokeServer("Cousin", "Buy")
+                    lastFruitSpin = os.time()
+                    task.wait(1)
+                    autoStoreAllFruits()
+                end)
+            end
         end
         task.wait(3)
     end
 end)
 
--- Плавный поворот камеры на цель
+-- Камера
 getgenv().FarmConnection = RunService.RenderStepped:Connect(function()
     if not getgenv().Farm then return end
     if currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
@@ -283,133 +389,129 @@ getgenv().FarmConnection = RunService.RenderStepped:Connect(function()
     end
 end)
 
--- Основной цикл фарминга
+-- Основной поток фарма
 task.spawn(function()
-    while getgenv().Farm do
+    while true do
         task.wait(0.05)
-        pcall(function()
-            local char = p.Character
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            local hum = char and char:FindFirstChild("Humanoid")
+        if getgenv().Farm then
+            pcall(function()
+                local char = p.Character
+                local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                local hum = char and char:FindFirstChild("Humanoid")
 
-            if not hrp or not hum or hum.Health <= 0 then 
-                currentTarget = nil
-                return 
-            end
-
-            hum.AutoRotate = true
-
-            -- Отступ при низком Здоровье
-            if hum.Health < hum.MaxHealth * 0.35 then
-                isRecoveringHP = true
-            elseif hum.Health >= hum.MaxHealth * 0.85 then
-                isRecoveringHP = false
-            end
-
-            if isRecoveringHP then
-                currentTarget = nil
-                local qData = getTargetQuestData()
-                local enemy = getEnemy(qData.Mob, qData.Mob, hrp)
-
-                if enemy and enemy:FindFirstChild("HumanoidRootPart") then
-                    local eHrp = enemy.HumanoidRootPart
-                    local fleeDir = (hrp.Position - eHrp.Position).Unit
-                    local fleePos = hrp.Position + Vector3.new(fleeDir.X * 45, 0, fleeDir.Z * 45)
-                    hum:MoveTo(fleePos)
+                if not hrp or not hum or hum.Health <= 0 then 
+                    currentTarget = nil
+                    return 
                 end
-                return
-            end
 
-            equipLight(char, hum)
+                hum.AutoRotate = true
 
-            local currentQuestData = getTargetQuestData()
-            local activeMob = getActiveQuestMob()
+                if hum.Health < hum.MaxHealth * 0.35 then
+                    isRecoveringHP = true
+                elseif hum.Health >= hum.MaxHealth * 0.85 then
+                    isRecoveringHP = false
+                end
 
-            -- Сброс квеста Короля, если он отсутствует на карте
-            if activeMob == "Gorilla King" and not isMobAlive("Gorilla King") then
-                abandonQuest()
-                task.wait(0.3)
-                activeMob = nil
-            end
+                if isRecoveringHP then
+                    currentTarget = nil
+                    local qData = getTargetQuestData()
+                    local enemy = getEnemy(qData.Mob, hrp)
+                    if enemy and enemy:FindFirstChild("HumanoidRootPart") then
+                        local eHrp = enemy.HumanoidRootPart
+                        local fleeDir = (hrp.Position - eHrp.Position).Unit
+                        local fleePos = hrp.Position + Vector3.new(fleeDir.X * 45, 0, fleeDir.Z * 45)
+                        hum:MoveTo(fleePos)
+                    end
+                    return
+                end
 
-            -- Взятие соответствующего квеста
-            if not activeMob then
-                takeQuest(currentQuestData.Name, currentQuestData.Level)
-                task.wait(0.2)
-                activeMob = getActiveQuestMob()
-            end
+                equipWeapon(char, hum)
 
-            currentTarget = getEnemy(activeMob or currentQuestData.Mob, currentQuestData.Mob, hrp)
+                local currentQuestData = getTargetQuestData()
+                local activeMob = getActiveQuestMob()
 
-            if not currentTarget and Waypoints[activeMob or currentQuestData.Mob] then
-                hum:MoveTo(Waypoints[activeMob or currentQuestData.Mob])
-            end
+                if activeMob == "Gorilla King" and not isMobAlive("Gorilla King") then
+                    abandonQuest()
+                    task.wait(0.3)
+                    activeMob = nil
+                end
 
-            -- Движение к цели
-            if currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
-                local mHrp = currentTarget.HumanoidRootPart
-                local mHum = currentTarget:FindFirstChild("Humanoid")
-                local dist = (hrp.Position - mHrp.Position).Magnitude
+                if not activeMob then
+                    takeQuest(currentQuestData.Name, currentQuestData.Level)
+                    task.wait(0.2)
+                    activeMob = getActiveQuestMob()
+                end
 
-                if dist > 5 then
-                    hum:MoveTo(mHrp.Position)
-                    local movedDist = (hrp.Position - lastHrpPos).Magnitude
-                    if movedDist < 0.4 then
-                        stuckTimer = stuckTimer + 0.05
-                        if stuckTimer >= 0.3 then doubleJump() end
+                local targetMobName = activeMob or currentQuestData.Mob
+                currentTarget = getEnemy(targetMobName, hrp)
+
+                local currentWaypoints = IslandsData[getgenv().SelectedIsland].Waypoints
+                if not currentTarget and currentWaypoints[targetMobName] then
+                    hum:MoveTo(currentWaypoints[targetMobName])
+                end
+
+                if currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
+                    local mHrp = currentTarget.HumanoidRootPart
+                    local mHum = currentTarget:FindFirstChild("Humanoid")
+                    local dist = (hrp.Position - mHrp.Position).Magnitude
+
+                    if dist > 5 then
+                        hum:MoveTo(mHrp.Position)
+                        local movedDist = (hrp.Position - lastHrpPos).Magnitude
+                        if movedDist < 0.4 then
+                            stuckTimer = stuckTimer + 0.05
+                            if stuckTimer >= 0.3 then doubleJump() end
+                        else
+                            stuckTimer = 0
+                        end
+                        lastHrpPos = hrp.Position
                     else
                         stuckTimer = 0
+                        lastHrpPos = hrp.Position
                     end
-                    lastHrpPos = hrp.Position
-                else
-                    stuckTimer = 0
-                    lastHrpPos = hrp.Position
-                end
 
-                local now = tick()
-                if dist > 10 and dist < 35 then
-                    if now - lastDashTime >= 1.0 then
-                        lastDashTime = now
-                        pressKey(Enum.KeyCode.Q, 0x51)
+                    local now = tick()
+                    if dist > 10 and dist < 35 then
+                        if now - lastDashTime >= 1.0 then
+                            lastDashTime = now
+                            pressKey(Enum.KeyCode.Q, 0x51)
+                        end
                     end
-                end
 
-                -- Полная ротация скиллов (Z, X, C, V, F)
-                if dist <= 15 and mHum and mHum.Health > 0 then
-                    if now - lastZTime >= 3.5 then
-                        lastZTime = now
-                        pressKey(Enum.KeyCode.Z, 0x5A)
-                    elseif now - lastXTime >= 5.5 then
-                        lastXTime = now
-                        pressKey(Enum.KeyCode.X, 0x58)
-                    elseif now - lastCTime >= 7.5 then
-                        lastCTime = now
-                        pressKey(Enum.KeyCode.C, 0x43)
-                    elseif now - lastVTime >= 12.0 then
-                        lastVTime = now
-                        pressKey(Enum.KeyCode.V, 0x56)
-                    elseif now - lastFTime >= 10.0 then
-                        lastFTime = now
-                        pressKey(Enum.KeyCode.F, 0x46)
-                    else
-                        local centerX = cam.ViewportSize.X / 2
-                        local centerY = cam.ViewportSize.Y / 2
-                        VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, true, game, 1)
-                        VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, false, game, 1)
+                    if dist <= 15 and mHum and mHum.Health > 0 then
+                        if now - lastZTime >= 3.5 then
+                            lastZTime = now
+                            pressKey(Enum.KeyCode.Z, 0x5A)
+                        elseif now - lastXTime >= 5.5 then
+                            lastXTime = now
+                            pressKey(Enum.KeyCode.X, 0x58)
+                        elseif now - lastCTime >= 7.5 then
+                            lastCTime = now
+                            pressKey(Enum.KeyCode.C, 0x43)
+                        elseif now - lastVTime >= 12.0 then
+                            lastVTime = now
+                            pressKey(Enum.KeyCode.V, 0x56)
+                        elseif now - lastFTime >= 10.0 then
+                            lastFTime = now
+                            pressKey(Enum.KeyCode.F, 0x46)
+                        else
+                            local centerX = cam.ViewportSize.X / 2
+                            local centerY = cam.ViewportSize.Y / 2
+                            VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, true, game, 1)
+                            VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, false, game, 1)
+                        end
                     end
                 end
-            end
 
-            local state = hum:GetState()
-            if state == Enum.HumanoidStateType.Swimming then hum.Jump = true end
+                local state = hum:GetState()
+                if state == Enum.HumanoidStateType.Swimming then hum.Jump = true end
 
-            local rayParams = RaycastParams.new()
-            rayParams.FilterDescendantsInstances = {char}
-            rayParams.FilterType = Enum.RaycastFilterType.Exclude
-            local wall = workspace:Raycast(hrp.Position, hrp.CFrame.LookVector * 4, rayParams)
-            if wall then doubleJump() end
-        end)
+                local rayParams = RaycastParams.new()
+                rayParams.FilterDescendantsInstances = {char}
+                rayParams.FilterType = Enum.RaycastFilterType.Exclude
+                local wall = workspace:Raycast(hrp.Position, hrp.CFrame.LookVector * 4, rayParams)
+                if wall then doubleJump() end
+            end)
+        end
     end
 end)
-
-print("🛡️ Скрипт обновлен: оптимизирован выбор квестов Джунглей и добавлены все скиллы (Z, X, C, V, F).")
