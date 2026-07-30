@@ -4,7 +4,7 @@ if game:GetService("CoreGui"):FindFirstChild("FarmHUD") then
 end
 
 getgenv().Farm = false
-getgenv().SelectedIsland = "Starter" -- "Starter", "Jungle" или "Pirate"
+getgenv().SelectedIsland = "Starter"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -24,10 +24,11 @@ local lastZTime, lastXTime, lastCTime, lastVTime, lastFTime = 0, 0, 0, 0, 0
 local lastHrpPos = Vector3.new(0, 0, 0)
 local stuckTimer = 0
 
--- БАЗА ДАННЫХ ОСТРОВОВ И КВЕСТОВ (Исправлено имя PirateTownQuest)
+-- БАЗА ДАННЫХ ОСТРОВОВ, КВЕСТОВ И ТОЧНЫХ КООРДИНАТ NPC (QuestNPC)
 local IslandsData = {
     ["Starter"] = {
         Name = "Начальный",
+        QuestNPC = Vector3.new(1060, 16, 1545),
         Quests = {
             {Req = 1, Name = "BanditQuest", Level = 1, Mob = "Bandit"}
         },
@@ -37,6 +38,7 @@ local IslandsData = {
     },
     ["Jungle"] = {
         Name = "Джунгли",
+        QuestNPC = Vector3.new(-1600, 36, 150),
         Quests = {
             {Req = 20, Name = "JungleQuest", Level = 3, Mob = "Gorilla King"},
             {Req = 15, Name = "JungleQuest", Level = 2, Mob = "Gorilla"},
@@ -50,6 +52,7 @@ local IslandsData = {
     },
     ["Pirate"] = {
         Name = "Пираты",
+        QuestNPC = Vector3.new(-1140, 4, 3830), -- Точные координаты NPC на Острове Пиратов
         Quests = {
             {Req = 55, Name = "PirateTownQuest", Level = 3, Mob = "Bobby"},
             {Req = 40, Name = "PirateTownQuest", Level = 2, Mob = "Brute"},
@@ -132,7 +135,7 @@ local ToggleCorner = Instance.new("UICorner")
 ToggleCorner.CornerRadius = UDim.new(0, 8)
 ToggleCorner.Parent = ToggleBtn
 
--- Горизонтальный контейнер для кнопок островов
+-- Контейнер кнопок
 local IslandFrame = Instance.new("Frame")
 IslandFrame.Size = UDim2.new(0.92, 0, 0, 36)
 IslandFrame.Position = UDim2.new(0.04, 0, 0.46, 0)
@@ -146,7 +149,6 @@ UIList.SortOrder = Enum.SortOrder.LayoutOrder
 UIList.Padding = UDim.new(0.02, 0)
 UIList.Parent = IslandFrame
 
--- Кнопки островов
 local IslandButtons = {}
 
 local function createIslandBtn(id, label, order)
@@ -177,7 +179,6 @@ createIslandBtn("Starter", "🏝️ Начальный", 1)
 createIslandBtn("Jungle", "🌴 Джунгли", 2)
 createIslandBtn("Pirate", "🏴‍☠️ Пираты", 3)
 
--- Метка Статуса
 local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(0.92, 0, 0, 30)
 StatusLabel.Position = UDim2.new(0.04, 0, 0.72, 0)
@@ -188,9 +189,6 @@ StatusLabel.TextSize = 12
 StatusLabel.Font = Enum.Font.SourceSans
 StatusLabel.Parent = MainFrame
 
----------------------------------------------------------
--- СОБЫТИЯ И ЛОГИКА ИНТЕРФЕЙСА
----------------------------------------------------------
 function updateUI()
     if getgenv().Farm then
         ToggleBtn.BackgroundColor3 = Color3.fromRGB(45, 165, 80)
@@ -228,7 +226,7 @@ end)
 updateUI()
 
 ---------------------------------------------------------
--- ОСНОВНАЯ ЛОГИКА ФАРМА И ЗАЩИТЫ ОТ ВОДЫ
+-- ОСНОВНАЯ ЛОГИКА ФАРМА
 ---------------------------------------------------------
 if getgenv().FarmConnection then
     getgenv().FarmConnection:Disconnect()
@@ -261,33 +259,26 @@ local function doubleJump()
     end)
 end
 
--- Функция проверки суши: исключает побег в воду или в воздух над водой
 local function getSafeFleePos(hrpPos, enemyPos)
     local baseDir = (hrpPos - enemyPos).Unit
     local angles = {0, 45, -45, 90, -90, 135, -135, 180}
 
     for _, angle in ipairs(angles) do
         local rad = math.rad(angle)
-        local cosA = math.cos(rad)
-        local sinA = math.sin(rad)
-
+        local cosA, sinA = math.cos(rad), math.sin(rad)
         local dirX = baseDir.X * cosA - baseDir.Z * sinA
         local dirZ = baseDir.X * sinA + baseDir.Z * cosA
-
         local testPos = hrpPos + Vector3.new(dirX * 40, 0, dirZ * 40)
 
         local rayParams = RaycastParams.new()
         rayParams.FilterDescendantsInstances = {p.Character}
         rayParams.FilterType = Enum.RaycastFilterType.Exclude
 
-        -- Проверяем пол под целевой точкой
         local rayResult = workspace:Raycast(testPos + Vector3.new(0, 30, 0), Vector3.new(0, -60, 0), rayParams)
-
         if rayResult and rayResult.Material ~= Enum.Material.Water then
             return rayResult.Position + Vector3.new(0, 2.5, 0)
         end
     end
-
     return nil
 end
 
@@ -356,15 +347,6 @@ local function abandonQuest()
     pcall(function() CommF:InvokeServer("AbandonQuest") end)
 end
 
-local function takeQuest(questName, questLevel)
-    pcall(function()
-        local questGui = p:FindFirstChild("PlayerGui") and p.PlayerGui:FindFirstChild("Main") and p.PlayerGui.Main:FindFirstChild("Quest")
-        if not (questGui and questGui.Visible) then
-            CommF:InvokeServer("StartQuest", questName, questLevel)
-        end
-    end)
-end
-
 local function getActiveQuestMob()
     local questGui = p:FindFirstChild("PlayerGui") and p.PlayerGui:FindFirstChild("Main") and p.PlayerGui.Main:FindFirstChild("Quest")
     if questGui and questGui.Visible then
@@ -413,6 +395,24 @@ local function getTargetQuestData()
     end
 end
 
+-- ВЗЯТИЕ КВЕСТА С ПОДХОДОМ К NPC
+local function safeTakeQuest(questName, questLevel, npcPos, hum, hrp)
+    local questGui = p:FindFirstChild("PlayerGui") and p.PlayerGui:FindFirstChild("Main") and p.PlayerGui.Main:FindFirstChild("Quest")
+    if not (questGui and questGui.Visible) then
+        local distToNpc = (hrp.Position - npcPos).Magnitude
+        
+        -- Если мы далеко от NPC, подходим ближе
+        if distToNpc > 15 then
+            hum:MoveTo(npcPos)
+            task.wait(0.1)
+        else
+            -- Подходящий дистанционный вызов сервера
+            CommF:InvokeServer("StartQuest", questName, questLevel)
+            task.wait(0.3)
+        end
+    end
+end
+
 local function getEnemy(mobName, hrp)
     local enemiesFolder = workspace:FindFirstChild("Enemies")
     if not enemiesFolder then return nil end
@@ -425,7 +425,7 @@ local function getEnemy(mobName, hrp)
             local dist = (hrp.Position - mHrp.Position).Magnitude
             if m.Name:find(mobName) then
                 if (mobName == "Gorilla" and m.Name:find("King")) or (mobName == "Pirate" and m.Name:find("Brute")) then
-                    -- пропуск других типов мобов
+                    -- пропуск мобов
                 elseif dist < minDist then
                     minDist = dist
                     target = m
@@ -436,7 +436,7 @@ local function getEnemy(mobName, hrp)
     return target
 end
 
--- Вспомогательный поток (рулетка и статы)
+-- Поток рулетки и статов
 task.spawn(function()
     while true do
         if getgenv().Farm then
@@ -457,7 +457,7 @@ task.spawn(function()
     end
 end)
 
--- Наведение камеры
+-- Камера
 getgenv().FarmConnection = RunService.RenderStepped:Connect(function()
     if not getgenv().Farm then return end
     if currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
@@ -494,10 +494,8 @@ task.spawn(function()
                     isRecoveringHP = false
                 end
 
-                -- ЛОГИКА БЕЗОПАСНОГО ОТСТУПЛЕНИЯ
                 if isRecoveringHP then
                     currentTarget = nil
-                    
                     local nearestEnemy = nil
                     local minDist = 100
                     local enemiesFolder = workspace:FindFirstChild("Enemies")
@@ -534,6 +532,7 @@ task.spawn(function()
 
                 equipWeapon(char, hum)
 
+                local islandObj = IslandsData[getgenv().SelectedIsland]
                 local currentQuestData = getTargetQuestData()
                 local activeMob = getActiveQuestMob()
 
@@ -543,16 +542,17 @@ task.spawn(function()
                     activeMob = nil
                 end
 
+                -- Взятие квеста с предварительным подходом к NPC
                 if not activeMob then
-                    takeQuest(currentQuestData.Name, currentQuestData.Level)
-                    task.wait(0.2)
+                    safeTakeQuest(currentQuestData.Name, currentQuestData.Level, islandObj.QuestNPC, hum, hrp)
                     activeMob = getActiveQuestMob()
+                    if not activeMob then return end -- Ждем пока персонаж дойдет до NPC
                 end
 
                 local targetMobName = activeMob or currentQuestData.Mob
                 currentTarget = getEnemy(targetMobName, hrp)
 
-                local currentWaypoints = IslandsData[getgenv().SelectedIsland].Waypoints
+                local currentWaypoints = islandObj.Waypoints
                 if not currentTarget and currentWaypoints[targetMobName] then
                     hum:MoveTo(currentWaypoints[targetMobName])
                 end
