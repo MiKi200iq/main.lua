@@ -24,7 +24,7 @@ local lastZTime, lastXTime, lastCTime, lastVTime, lastFTime = 0, 0, 0, 0, 0
 local lastHrpPos = Vector3.new(0, 0, 0)
 local stuckTimer = 0
 
--- БАЗА ДАННЫХ ОСТРОВОВ И КВЕСТОВ
+-- БАЗА ДАННЫХ ОСТРОВОВ И КВЕСТОВ (Исправлено имя PirateTownQuest)
 local IslandsData = {
     ["Starter"] = {
         Name = "Начальный",
@@ -284,11 +284,11 @@ local function getSafeFleePos(hrpPos, enemyPos)
         local rayResult = workspace:Raycast(testPos + Vector3.new(0, 30, 0), Vector3.new(0, -60, 0), rayParams)
 
         if rayResult and rayResult.Material ~= Enum.Material.Water then
-            return rayResult.Position + Vector3.new(0, 2.5, 0) -- Безопасная суша
+            return rayResult.Position + Vector3.new(0, 2.5, 0)
         end
     end
 
-    return nil -- Если кругом вода, возвращаем nil
+    return nil
 end
 
 local function isMobAlive(mobName)
@@ -521,7 +521,6 @@ task.spawn(function()
                         if safePos then
                             hum:MoveTo(safePos)
                         else
-                            -- Если пути отступления ведут к воде, отойдем к центру острова
                             local currentWaypoints = IslandsData[getgenv().SelectedIsland].Waypoints
                             local activeData = getTargetQuestData()
                             local fallbackWp = currentWaypoints[activeData.Mob] or hrp.Position
