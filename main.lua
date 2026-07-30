@@ -4,7 +4,7 @@ if game:GetService("CoreGui"):FindFirstChild("FarmHUD") then
 end
 
 getgenv().Farm = false
-getgenv().SelectedIsland = "Starter"
+getgenv().SelectedIsland = "Starter" -- "Starter", "Jungle" или "Pirate"
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -24,13 +24,12 @@ local lastZTime, lastXTime, lastCTime, lastVTime, lastFTime = 0, 0, 0, 0, 0
 local lastHrpPos = Vector3.new(0, 0, 0)
 local stuckTimer = 0
 
--- БАЗА ДАННЫХ ОСТРОВОВ (Имя квеста изменено на "Pirate")
+-- БАЗА ДАННЫХ ОСТРОВОВ И КВЕСТОВ
 local IslandsData = {
     ["Starter"] = {
         Name = "Начальный",
-        QuestNPC = Vector3.new(1060, 16, 1545),
         Quests = {
-            {Req = 1, Name = "BanditQuest", QuestId = 1, Mob = "Bandit"}
+            {Req = 1, Name = "BanditQuest", Level = 1, Mob = "Bandit"}
         },
         Waypoints = {
             ["Bandit"] = Vector3.new(1050, 16, 1400)
@@ -38,11 +37,10 @@ local IslandsData = {
     },
     ["Jungle"] = {
         Name = "Джунгли",
-        QuestNPC = Vector3.new(-1600, 36, 150),
         Quests = {
-            {Req = 20, Name = "JungleQuest", QuestId = 3, Mob = "Gorilla King"},
-            {Req = 15, Name = "JungleQuest", QuestId = 2, Mob = "Gorilla"},
-            {Req = 10, Name = "JungleQuest", QuestId = 1, Mob = "Monkey"},
+            {Req = 20, Name = "JungleQuest", Level = 3, Mob = "Gorilla King"},
+            {Req = 15, Name = "JungleQuest", Level = 2, Mob = "Gorilla"},
+            {Req = 10, Name = "JungleQuest", Level = 1, Mob = "Monkey"},
         },
         Waypoints = {
             ["Monkey"] = Vector3.new(-1600, 36, 150),
@@ -52,11 +50,10 @@ local IslandsData = {
     },
     ["Pirate"] = {
         Name = "Пираты",
-        QuestNPC = Vector3.new(-1140, 4, 3825),
         Quests = {
-            {Req = 55, Name = "Pirate", QuestId = 3, Mob = "Bobby"},
-            {Req = 40, Name = "Pirate", QuestId = 2, Mob = "Brute"},
-            {Req = 30, Name = "Pirate", QuestId = 1, Mob = "Pirate"},
+            {Req = 55, Name = "PirateQuest", Level = 3, Mob = "Bobby"},
+            {Req = 40, Name = "PirateQuest", Level = 2, Mob = "Brute"},
+            {Req = 30, Name = "PirateQuest", Level = 1, Mob = "Pirate"},
         },
         Waypoints = {
             ["Pirate"] = Vector3.new(-1215, 15, 3910),
@@ -90,6 +87,7 @@ local UICorner = Instance.new("UICorner")
 UICorner.CornerRadius = UDim.new(0, 10)
 UICorner.Parent = MainFrame
 
+-- Заголовок
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 38)
 Title.BackgroundColor3 = Color3.fromRGB(34, 34, 40)
@@ -104,6 +102,7 @@ local TitleCorner = Instance.new("UICorner")
 TitleCorner.CornerRadius = UDim.new(0, 10)
 TitleCorner.Parent = Title
 
+-- Кнопка ЗАКРЫТЬ (❌)
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Size = UDim2.new(0, 26, 0, 26)
 CloseBtn.Position = UDim2.new(1, -32, 0, 6)
@@ -118,6 +117,7 @@ local CloseCorner = Instance.new("UICorner")
 CloseCorner.CornerRadius = UDim.new(0, 6)
 CloseCorner.Parent = CloseBtn
 
+-- Кнопка ВКЛ/ВЫКЛ ФАРМ
 local ToggleBtn = Instance.new("TextButton")
 ToggleBtn.Size = UDim2.new(0.92, 0, 0, 38)
 ToggleBtn.Position = UDim2.new(0.04, 0, 0.23, 0)
@@ -132,6 +132,7 @@ local ToggleCorner = Instance.new("UICorner")
 ToggleCorner.CornerRadius = UDim.new(0, 8)
 ToggleCorner.Parent = ToggleBtn
 
+-- Горизонтальный контейнер для кнопок островов
 local IslandFrame = Instance.new("Frame")
 IslandFrame.Size = UDim2.new(0.92, 0, 0, 36)
 IslandFrame.Position = UDim2.new(0.04, 0, 0.46, 0)
@@ -145,6 +146,7 @@ UIList.SortOrder = Enum.SortOrder.LayoutOrder
 UIList.Padding = UDim.new(0.02, 0)
 UIList.Parent = IslandFrame
 
+-- Кнопки островов
 local IslandButtons = {}
 
 local function createIslandBtn(id, label, order)
@@ -175,6 +177,7 @@ createIslandBtn("Starter", "🏝️ Начальный", 1)
 createIslandBtn("Jungle", "🌴 Джунгли", 2)
 createIslandBtn("Pirate", "🏴‍☠️ Пираты", 3)
 
+-- Метка Статуса
 local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(0.92, 0, 0, 30)
 StatusLabel.Position = UDim2.new(0.04, 0, 0.72, 0)
@@ -185,6 +188,9 @@ StatusLabel.TextSize = 12
 StatusLabel.Font = Enum.Font.SourceSans
 StatusLabel.Parent = MainFrame
 
+---------------------------------------------------------
+-- СОБЫТИЯ И ЛОГИКА ИНТЕРФЕЙСА
+---------------------------------------------------------
 function updateUI()
     if getgenv().Farm then
         ToggleBtn.BackgroundColor3 = Color3.fromRGB(45, 165, 80)
@@ -222,7 +228,7 @@ end)
 updateUI()
 
 ---------------------------------------------------------
--- ЛОГИКА ВЗЯТИЯ И ФАРМА
+-- ОСНОВНАЯ ЛОГИКА ФАРМА
 ---------------------------------------------------------
 if getgenv().FarmConnection then
     getgenv().FarmConnection:Disconnect()
@@ -320,6 +326,15 @@ local function abandonQuest()
     pcall(function() CommF:InvokeServer("AbandonQuest") end)
 end
 
+local function takeQuest(questName, questLevel)
+    pcall(function()
+        local questGui = p:FindFirstChild("PlayerGui") and p.PlayerGui:FindFirstChild("Main") and p.PlayerGui.Main:FindFirstChild("Quest")
+        if not (questGui and questGui.Visible) then
+            CommF:InvokeServer("StartQuest", questName, questLevel)
+        end
+    end)
+end
+
 local function getActiveQuestMob()
     local questGui = p:FindFirstChild("PlayerGui") and p.PlayerGui:FindFirstChild("Main") and p.PlayerGui.Main:FindFirstChild("Quest")
     if questGui and questGui.Visible then
@@ -368,31 +383,6 @@ local function getTargetQuestData()
     end
 end
 
--- ВЗЯТИЕ КВЕСТА: Пробуем основной QuestId, затем дублируем запрос
-local function safeTakeQuest(questName, questId, npcPos, hum, hrp)
-    local active = getActiveQuestMob()
-    if not active then
-        local distToNpc = (hrp.Position - npcPos).Magnitude
-        
-        if distToNpc > 10 then
-            hum:MoveTo(npcPos)
-            task.wait(0.1)
-        else
-            hum:MoveTo(hrp.Position)
-            task.wait(0.1)
-            -- Запрос квеста "Pirate"
-            CommF:InvokeServer("StartQuest", questName, questId)
-            task.wait(0.3)
-            
-            -- Если UI всё ещё не обновился, запрашиваем с fallback QuestId = 1
-            if not getActiveQuestMob() then
-                CommF:InvokeServer("StartQuest", questName, 1)
-                task.wait(0.3)
-            end
-        end
-    end
-end
-
 local function getEnemy(mobName, hrp)
     local enemiesFolder = workspace:FindFirstChild("Enemies")
     if not enemiesFolder then return nil end
@@ -405,7 +395,7 @@ local function getEnemy(mobName, hrp)
             local dist = (hrp.Position - mHrp.Position).Magnitude
             if m.Name:find(mobName) then
                 if (mobName == "Gorilla" and m.Name:find("King")) or (mobName == "Pirate" and m.Name:find("Brute")) then
-                    -- пропуск мобов
+                    -- пропуск других видов мобов
                 elseif dist < minDist then
                     minDist = dist
                     target = m
@@ -416,7 +406,7 @@ local function getEnemy(mobName, hrp)
     return target
 end
 
--- Вспомогательный поток
+-- Поток рулетки и статов
 task.spawn(function()
     while true do
         if getgenv().Farm then
@@ -451,7 +441,7 @@ getgenv().FarmConnection = RunService.RenderStepped:Connect(function()
     end
 end)
 
--- Основной цикл фарма
+-- Основной поток фарма
 task.spawn(function()
     while true do
         task.wait(0.05)
@@ -476,13 +466,19 @@ task.spawn(function()
 
                 if isRecoveringHP then
                     currentTarget = nil
-                    hum:MoveTo(hrp.Position)
+                    local qData = getTargetQuestData()
+                    local enemy = getEnemy(qData.Mob, hrp)
+                    if enemy and enemy:FindFirstChild("HumanoidRootPart") then
+                        local eHrp = enemy.HumanoidRootPart
+                        local fleeDir = (hrp.Position - eHrp.Position).Unit
+                        local fleePos = hrp.Position + Vector3.new(fleeDir.X * 45, 0, fleeDir.Z * 45)
+                        hum:MoveTo(fleePos)
+                    end
                     return
                 end
 
                 equipWeapon(char, hum)
 
-                local islandObj = IslandsData[getgenv().SelectedIsland]
                 local currentQuestData = getTargetQuestData()
                 local activeMob = getActiveQuestMob()
 
@@ -493,15 +489,15 @@ task.spawn(function()
                 end
 
                 if not activeMob then
-                    safeTakeQuest(currentQuestData.Name, currentQuestData.QuestId, islandObj.QuestNPC, hum, hrp)
+                    takeQuest(currentQuestData.Name, currentQuestData.Level)
+                    task.wait(0.2)
                     activeMob = getActiveQuestMob()
-                    if not activeMob then return end
                 end
 
                 local targetMobName = activeMob or currentQuestData.Mob
                 currentTarget = getEnemy(targetMobName, hrp)
 
-                local currentWaypoints = islandObj.Waypoints
+                local currentWaypoints = IslandsData[getgenv().SelectedIsland].Waypoints
                 if not currentTarget and currentWaypoints[targetMobName] then
                     hum:MoveTo(currentWaypoints[targetMobName])
                 end
