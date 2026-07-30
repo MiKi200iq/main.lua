@@ -24,7 +24,7 @@ local lastZTime, lastXTime, lastCTime, lastVTime, lastFTime = 0, 0, 0, 0, 0
 local lastHrpPos = Vector3.new(0, 0, 0)
 local stuckTimer = 0
 
--- ФИКСИРОВАННАЯ БАЗА ОСТРОВОВ С СЕРВЕРНЫМИ ID КВЕСТОВ
+-- БАЗА ДАННЫХ ОСТРОВОВ (Имя квеста изменено на "Pirate")
 local IslandsData = {
     ["Starter"] = {
         Name = "Начальный",
@@ -54,9 +54,9 @@ local IslandsData = {
         Name = "Пираты",
         QuestNPC = Vector3.new(-1140, 4, 3825),
         Quests = {
-            {Req = 55, Name = "PirateTownQuest", QuestId = 3, Mob = "Bobby"},
-            {Req = 40, Name = "PirateTownQuest", QuestId = 2, Mob = "Brute"},
-            {Req = 30, Name = "PirateTownQuest", QuestId = 1, Mob = "Pirate"}, -- Ваша консоль показала успешный отклик на (PirateTownQuest, 1)
+            {Req = 55, Name = "Pirate", QuestId = 3, Mob = "Bobby"},
+            {Req = 40, Name = "Pirate", QuestId = 2, Mob = "Brute"},
+            {Req = 30, Name = "Pirate", QuestId = 1, Mob = "Pirate"},
         },
         Waypoints = {
             ["Pirate"] = Vector3.new(-1215, 15, 3910),
@@ -368,7 +368,7 @@ local function getTargetQuestData()
     end
 end
 
--- ВЗЯТИЕ КВЕСТА: Отправляет QuestId (1, 2, 3) вместо уровня
+-- ВЗЯТИЕ КВЕСТА: Пробуем основной QuestId, затем дублируем запрос
 local function safeTakeQuest(questName, questId, npcPos, hum, hrp)
     local active = getActiveQuestMob()
     if not active then
@@ -380,9 +380,15 @@ local function safeTakeQuest(questName, questId, npcPos, hum, hrp)
         else
             hum:MoveTo(hrp.Position)
             task.wait(0.1)
-            -- Отправка строго верифицированных пар (PirateTownQuest, 1)
+            -- Запрос квеста "Pirate"
             CommF:InvokeServer("StartQuest", questName, questId)
-            task.wait(0.4)
+            task.wait(0.3)
+            
+            -- Если UI всё ещё не обновился, запрашиваем с fallback QuestId = 1
+            if not getActiveQuestMob() then
+                CommF:InvokeServer("StartQuest", questName, 1)
+                task.wait(0.3)
+            end
         end
     end
 end
