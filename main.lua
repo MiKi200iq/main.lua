@@ -24,7 +24,7 @@ local lastZTime, lastXTime, lastCTime, lastVTime, lastFTime = 0, 0, 0, 0, 0
 local lastHrpPos = Vector3.new(0, 0, 0)
 local stuckTimer = 0
 
--- БАЗА ДАННЫХ ОСТРОВОВ, КВЕСТОВ И ТОЧНЫХ КООРДИНАТ NPC (QuestNPC)
+-- ТОЧНЫЕ КВЕСТЫ И КООРДИНАТЫ (Подтверждено логами `PirateTownQuest`)
 local IslandsData = {
     ["Starter"] = {
         Name = "Начальный",
@@ -52,7 +52,7 @@ local IslandsData = {
     },
     ["Pirate"] = {
         Name = "Пираты",
-        QuestNPC = Vector3.new(-1140, 4, 3830), -- Точные координаты NPC на Острове Пиратов
+        QuestNPC = Vector3.new(-1140, 4, 3830),
         Quests = {
             {Req = 55, Name = "PirateTownQuest", Level = 3, Mob = "Bobby"},
             {Req = 40, Name = "PirateTownQuest", Level = 2, Mob = "Brute"},
@@ -90,7 +90,6 @@ local UICorner = Instance.new("UICorner")
 UICorner.CornerRadius = UDim.new(0, 10)
 UICorner.Parent = MainFrame
 
--- Заголовок
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 38)
 Title.BackgroundColor3 = Color3.fromRGB(34, 34, 40)
@@ -105,7 +104,6 @@ local TitleCorner = Instance.new("UICorner")
 TitleCorner.CornerRadius = UDim.new(0, 10)
 TitleCorner.Parent = Title
 
--- Кнопка ЗАКРЫТЬ (❌)
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Size = UDim2.new(0, 26, 0, 26)
 CloseBtn.Position = UDim2.new(1, -32, 0, 6)
@@ -120,7 +118,6 @@ local CloseCorner = Instance.new("UICorner")
 CloseCorner.CornerRadius = UDim.new(0, 6)
 CloseCorner.Parent = CloseBtn
 
--- Кнопка ВКЛ/ВЫКЛ ФАРМ
 local ToggleBtn = Instance.new("TextButton")
 ToggleBtn.Size = UDim2.new(0.92, 0, 0, 38)
 ToggleBtn.Position = UDim2.new(0.04, 0, 0.23, 0)
@@ -135,7 +132,6 @@ local ToggleCorner = Instance.new("UICorner")
 ToggleCorner.CornerRadius = UDim.new(0, 8)
 ToggleCorner.Parent = ToggleBtn
 
--- Контейнер кнопок
 local IslandFrame = Instance.new("Frame")
 IslandFrame.Size = UDim2.new(0.92, 0, 0, 36)
 IslandFrame.Position = UDim2.new(0.04, 0, 0.46, 0)
@@ -226,7 +222,7 @@ end)
 updateUI()
 
 ---------------------------------------------------------
--- ОСНОВНАЯ ЛОГИКА ФАРМА
+-- ВСПАТЫВАНИЕ КВЕСТОВ И ФАРМ
 ---------------------------------------------------------
 if getgenv().FarmConnection then
     getgenv().FarmConnection:Disconnect()
@@ -347,13 +343,14 @@ local function abandonQuest()
     pcall(function() CommF:InvokeServer("AbandonQuest") end)
 end
 
+-- ПРОВЕРКА АКТИВНОГО КВЕСТА В ИНТЕРФЕЙСЕ
 local function getActiveQuestMob()
     local questGui = p:FindFirstChild("PlayerGui") and p.PlayerGui:FindFirstChild("Main") and p.PlayerGui.Main:FindFirstChild("Quest")
-    if questGui and questGui.Visible then
+    if questGui and (questGui.Visible or questGui:FindFirstChild("Container")) then
         for _, v in pairs(questGui:GetDescendants()) do
-            if v:IsA("TextLabel") and v.Visible and v.Text ~= "" then
+            if v:IsA("TextLabel") and v.Text ~= "" then
                 local txt = v.Text
-                if txt:find("Defeat") or txt:find("Убить") or txt:find("%(%d+/%d+%)") then
+                if txt:find("Defeat") or txt:find("Убить") or txt:find("%(%d+/%d+%)") or txt:find("0/") or txt:find("1/") or txt:find("2/") or txt:find("3/") or txt:find("4/") or txt:find("5/") then
                     if txt:find("Gorilla King") then return "Gorilla King" end
                     if txt:find("Gorilla") then return "Gorilla" end
                     if txt:find("Monkey") then return "Monkey" end
@@ -395,20 +392,20 @@ local function getTargetQuestData()
     end
 end
 
--- ВЗЯТИЕ КВЕСТА С ПОДХОДОМ К NPC
+-- НАДЕЖНОЕ ВЗЯТИЕ КВЕСТА
 local function safeTakeQuest(questName, questLevel, npcPos, hum, hrp)
-    local questGui = p:FindFirstChild("PlayerGui") and p.PlayerGui:FindFirstChild("Main") and p.PlayerGui.Main:FindFirstChild("Quest")
-    if not (questGui and questGui.Visible) then
+    local active = getActiveQuestMob()
+    if not active then
         local distToNpc = (hrp.Position - npcPos).Magnitude
         
-        -- Если мы далеко от NPC, подходим ближе
-        if distToNpc > 15 then
+        -- Если далеко от NPC, доходим до него
+        if distToNpc > 12 then
             hum:MoveTo(npcPos)
             task.wait(0.1)
         else
-            -- Подходящий дистанционный вызов сервера
+            -- Прямой вызов сервера и пауза 0.5с для прорисовки UI
             CommF:InvokeServer("StartQuest", questName, questLevel)
-            task.wait(0.3)
+            task.wait(0.5)
         end
     end
 end
@@ -436,7 +433,7 @@ local function getEnemy(mobName, hrp)
     return target
 end
 
--- Поток рулетки и статов
+-- Рулетка и статы
 task.spawn(function()
     while true do
         if getgenv().Farm then
@@ -542,11 +539,11 @@ task.spawn(function()
                     activeMob = nil
                 end
 
-                -- Взятие квеста с предварительным подходом к NPC
+                -- Если квеста еще нет в UI, берем его и ждем прорисовки
                 if not activeMob then
                     safeTakeQuest(currentQuestData.Name, currentQuestData.Level, islandObj.QuestNPC, hum, hrp)
                     activeMob = getActiveQuestMob()
-                    if not activeMob then return end -- Ждем пока персонаж дойдет до NPC
+                    if not activeMob then return end
                 end
 
                 local targetMobName = activeMob or currentQuestData.Mob
