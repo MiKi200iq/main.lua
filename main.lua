@@ -51,9 +51,9 @@ local IslandsData = {
     ["Pirate"] = {
         Name = "Пираты",
         Quests = {
-            {Req = 55, Name = "PirateQuest", Level = 3, Mob = "Bobby"},
-            {Req = 40, Name = "PirateQuest", Level = 2, Mob = "Brute"},
-            {Req = 30, Name = "PirateQuest", Level = 1, Mob = "Pirate"},
+            {Req = 55, Name = "PirateTownQuest", Level = 3, Mob = "Bobby"},
+            {Req = 40, Name = "PirateTownQuest", Level = 2, Mob = "Brute"},
+            {Req = 30, Name = "PirateTownQuest", Level = 1, Mob = "Pirate"},
         },
         Waypoints = {
             ["Pirate"] = Vector3.new(-1215, 15, 3910),
