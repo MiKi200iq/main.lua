@@ -24,13 +24,13 @@ local lastZTime, lastXTime, lastCTime, lastVTime, lastFTime = 0, 0, 0, 0, 0
 local lastHrpPos = Vector3.new(0, 0, 0)
 local stuckTimer = 0
 
--- ТОЧНЫЕ КВЕСТЫ И КООРДИНАТЫ (Подтверждено логами `PirateTownQuest`)
+-- ФИКСИРОВАННАЯ БАЗА ОСТРОВОВ С СЕРВЕРНЫМИ ID КВЕСТОВ
 local IslandsData = {
     ["Starter"] = {
         Name = "Начальный",
         QuestNPC = Vector3.new(1060, 16, 1545),
         Quests = {
-            {Req = 1, Name = "BanditQuest", Level = 1, Mob = "Bandit"}
+            {Req = 1, Name = "BanditQuest", QuestId = 1, Mob = "Bandit"}
         },
         Waypoints = {
             ["Bandit"] = Vector3.new(1050, 16, 1400)
@@ -40,9 +40,9 @@ local IslandsData = {
         Name = "Джунгли",
         QuestNPC = Vector3.new(-1600, 36, 150),
         Quests = {
-            {Req = 20, Name = "JungleQuest", Level = 3, Mob = "Gorilla King"},
-            {Req = 15, Name = "JungleQuest", Level = 2, Mob = "Gorilla"},
-            {Req = 10, Name = "JungleQuest", Level = 1, Mob = "Monkey"},
+            {Req = 20, Name = "JungleQuest", QuestId = 3, Mob = "Gorilla King"},
+            {Req = 15, Name = "JungleQuest", QuestId = 2, Mob = "Gorilla"},
+            {Req = 10, Name = "JungleQuest", QuestId = 1, Mob = "Monkey"},
         },
         Waypoints = {
             ["Monkey"] = Vector3.new(-1600, 36, 150),
@@ -52,11 +52,11 @@ local IslandsData = {
     },
     ["Pirate"] = {
         Name = "Пираты",
-        QuestNPC = Vector3.new(-1140, 4, 3830),
+        QuestNPC = Vector3.new(-1140, 4, 3825),
         Quests = {
-            {Req = 55, Name = "PirateTownQuest", Level = 3, Mob = "Bobby"},
-            {Req = 40, Name = "PirateTownQuest", Level = 2, Mob = "Brute"},
-            {Req = 30, Name = "PirateTownQuest", Level = 1, Mob = "Pirate"},
+            {Req = 55, Name = "PirateTownQuest", QuestId = 3, Mob = "Bobby"},
+            {Req = 40, Name = "PirateTownQuest", QuestId = 2, Mob = "Brute"},
+            {Req = 30, Name = "PirateTownQuest", QuestId = 1, Mob = "Pirate"}, -- Ваша консоль показала успешный отклик на (PirateTownQuest, 1)
         },
         Waypoints = {
             ["Pirate"] = Vector3.new(-1215, 15, 3910),
@@ -222,7 +222,7 @@ end)
 updateUI()
 
 ---------------------------------------------------------
--- ВСПАТЫВАНИЕ КВЕСТОВ И ФАРМ
+-- ЛОГИКА ВЗЯТИЯ И ФАРМА
 ---------------------------------------------------------
 if getgenv().FarmConnection then
     getgenv().FarmConnection:Disconnect()
@@ -253,29 +253,6 @@ local function doubleJump()
             end
         end)
     end)
-end
-
-local function getSafeFleePos(hrpPos, enemyPos)
-    local baseDir = (hrpPos - enemyPos).Unit
-    local angles = {0, 45, -45, 90, -90, 135, -135, 180}
-
-    for _, angle in ipairs(angles) do
-        local rad = math.rad(angle)
-        local cosA, sinA = math.cos(rad), math.sin(rad)
-        local dirX = baseDir.X * cosA - baseDir.Z * sinA
-        local dirZ = baseDir.X * sinA + baseDir.Z * cosA
-        local testPos = hrpPos + Vector3.new(dirX * 40, 0, dirZ * 40)
-
-        local rayParams = RaycastParams.new()
-        rayParams.FilterDescendantsInstances = {p.Character}
-        rayParams.FilterType = Enum.RaycastFilterType.Exclude
-
-        local rayResult = workspace:Raycast(testPos + Vector3.new(0, 30, 0), Vector3.new(0, -60, 0), rayParams)
-        if rayResult and rayResult.Material ~= Enum.Material.Water then
-            return rayResult.Position + Vector3.new(0, 2.5, 0)
-        end
-    end
-    return nil
 end
 
 local function isMobAlive(mobName)
@@ -343,14 +320,13 @@ local function abandonQuest()
     pcall(function() CommF:InvokeServer("AbandonQuest") end)
 end
 
--- ПРОВЕРКА АКТИВНОГО КВЕСТА В ИНТЕРФЕЙСЕ
 local function getActiveQuestMob()
     local questGui = p:FindFirstChild("PlayerGui") and p.PlayerGui:FindFirstChild("Main") and p.PlayerGui.Main:FindFirstChild("Quest")
-    if questGui and (questGui.Visible or questGui:FindFirstChild("Container")) then
+    if questGui and questGui.Visible then
         for _, v in pairs(questGui:GetDescendants()) do
-            if v:IsA("TextLabel") and v.Text ~= "" then
+            if v:IsA("TextLabel") and v.Visible and v.Text ~= "" then
                 local txt = v.Text
-                if txt:find("Defeat") or txt:find("Убить") or txt:find("%(%d+/%d+%)") or txt:find("0/") or txt:find("1/") or txt:find("2/") or txt:find("3/") or txt:find("4/") or txt:find("5/") then
+                if txt:find("Defeat") or txt:find("Убить") or txt:find("%(%d+/%d+%)") then
                     if txt:find("Gorilla King") then return "Gorilla King" end
                     if txt:find("Gorilla") then return "Gorilla" end
                     if txt:find("Monkey") then return "Monkey" end
@@ -392,20 +368,21 @@ local function getTargetQuestData()
     end
 end
 
--- НАДЕЖНОЕ ВЗЯТИЕ КВЕСТА
-local function safeTakeQuest(questName, questLevel, npcPos, hum, hrp)
+-- ВЗЯТИЕ КВЕСТА: Отправляет QuestId (1, 2, 3) вместо уровня
+local function safeTakeQuest(questName, questId, npcPos, hum, hrp)
     local active = getActiveQuestMob()
     if not active then
         local distToNpc = (hrp.Position - npcPos).Magnitude
         
-        -- Если далеко от NPC, доходим до него
-        if distToNpc > 12 then
+        if distToNpc > 10 then
             hum:MoveTo(npcPos)
             task.wait(0.1)
         else
-            -- Прямой вызов сервера и пауза 0.5с для прорисовки UI
-            CommF:InvokeServer("StartQuest", questName, questLevel)
-            task.wait(0.5)
+            hum:MoveTo(hrp.Position)
+            task.wait(0.1)
+            -- Отправка строго верифицированных пар (PirateTownQuest, 1)
+            CommF:InvokeServer("StartQuest", questName, questId)
+            task.wait(0.4)
         end
     end
 end
@@ -433,7 +410,7 @@ local function getEnemy(mobName, hrp)
     return target
 end
 
--- Рулетка и статы
+-- Вспомогательный поток
 task.spawn(function()
     while true do
         if getgenv().Farm then
@@ -493,37 +470,7 @@ task.spawn(function()
 
                 if isRecoveringHP then
                     currentTarget = nil
-                    local nearestEnemy = nil
-                    local minDist = 100
-                    local enemiesFolder = workspace:FindFirstChild("Enemies")
-
-                    if enemiesFolder then
-                        for _, m in pairs(enemiesFolder:GetChildren()) do
-                            local mHum = m:FindFirstChild("Humanoid")
-                            local mHrp = m:FindFirstChild("HumanoidRootPart")
-                            if mHum and mHrp and mHum.Health > 0 then
-                                local dist = (hrp.Position - mHrp.Position).Magnitude
-                                if dist < minDist then
-                                    minDist = dist
-                                    nearestEnemy = m
-                                end
-                            end
-                        end
-                    end
-
-                    if nearestEnemy and nearestEnemy:FindFirstChild("HumanoidRootPart") then
-                        local safePos = getSafeFleePos(hrp.Position, nearestEnemy.HumanoidRootPart.Position)
-                        if safePos then
-                            hum:MoveTo(safePos)
-                        else
-                            local currentWaypoints = IslandsData[getgenv().SelectedIsland].Waypoints
-                            local activeData = getTargetQuestData()
-                            local fallbackWp = currentWaypoints[activeData.Mob] or hrp.Position
-                            hum:MoveTo(fallbackWp)
-                        end
-                    else
-                        hum:MoveTo(hrp.Position)
-                    end
+                    hum:MoveTo(hrp.Position)
                     return
                 end
 
@@ -539,9 +486,8 @@ task.spawn(function()
                     activeMob = nil
                 end
 
-                -- Если квеста еще нет в UI, берем его и ждем прорисовки
                 if not activeMob then
-                    safeTakeQuest(currentQuestData.Name, currentQuestData.Level, islandObj.QuestNPC, hum, hrp)
+                    safeTakeQuest(currentQuestData.Name, currentQuestData.QuestId, islandObj.QuestNPC, hum, hrp)
                     activeMob = getActiveQuestMob()
                     if not activeMob then return end
                 end
